@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Маркетинговый дашборд</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="css/styles.css" />
+
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts@latest"></script>
+  </head>
+  <body>
+    <div class="top-progress" id="topProgress"></div>
+
+    <aside class="sidebar">
+      <div class="brand">
+        <img class="brandLogo" src="assets/desnol-logo.png" alt="Desnol" />
+      </div>
+      <nav class="nav">
+        <a class="navItem active" href="#kpi">KPI</a>
+        <a class="navItem" href="#traffic">Трафик</a>
+        <a class="navItem" href="#efficiency">Эффективность</a>
+        <a class="navItem" href="#funnel">Воронка</a>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <div class="appLayout">
+        <div class="dash">
+          <header class="topbar">
+            <div>
+              <div class="eyebrow">Premium Analytics</div>
+              <h1>Маркетинговый дашборд</h1>
+              <div class="sub" id="periodLabel">Период: —</div>
+            </div>
+
+            <div class="filters">
+              <div class="filterBlock">
+                <div class="filterLabel">Период</div>
+                <div class="pills" id="periodPills">
+                  <button class="pill" data-range="1m">1 мес</button>
+                  <button class="pill" data-range="3m">3 мес</button>
+                  <button class="pill active" data-range="6m">6 мес</button>
+                  <button class="pill" data-range="all">Всё</button>
+                </div>
+              </div>
+
+              <div class="filterBlock">
+                <div class="filterLabel">Каналы</div>
+                <div class="toggles" id="channelToggles"></div>
+              </div>
+            </div>
+          </header>
+
+          <section id="kpi" class="section">
+            <div class="sectionHeader">
+              <h2>KPI</h2>
+              <div class="hint">Акцент: <span class="accent">#c8ff00</span></div>
+            </div>
+
+            <div class="kpiGrid">
+              <div class="card kpi" style="--kpi-color: var(--accent)">
+                <div class="kpiTitle">Общий бюджет</div>
+                <div class="kpiValue mono" id="kpiBudget">—</div>
+                <div class="kpiMeta" id="kpiBudgetMeta">—</div>
+              </div>
+              <div class="card kpi" style="--kpi-color: #22c55e">
+                <div class="kpiTitle">Заявки</div>
+                <div class="kpiValue mono" id="kpiLeads">—</div>
+                <div class="kpiMeta" id="kpiLeadsMeta">—</div>
+              </div>
+              <div class="card kpi" style="--kpi-color: #3b82f6">
+                <div class="kpiTitle">Лучший ROAS</div>
+                <div class="kpiValue mono" id="kpiBestRoas">—</div>
+                <div class="kpiMeta" id="kpiBestRoasMeta">—</div>
+              </div>
+              <div class="card kpi" style="--kpi-color: #f59e0b">
+                <div class="kpiTitle">Лучший CPL</div>
+                <div class="kpiValue mono" id="kpiBestCpl">—</div>
+                <div class="kpiMeta" id="kpiBestCplMeta">—</div>
+              </div>
+            </div>
+          </section>
+
+          <section id="traffic" class="section">
+            <div class="sectionHeader">
+              <h2>Динамика трафика (6 месяцев)</h2>
+              <div class="hint">Area chart по переходам на сайт</div>
+            </div>
+            <div class="card chartCard">
+              <div id="trafficChart" class="chart"></div>
+            </div>
+          </section>
+
+          <section id="efficiency" class="section">
+            <div class="sectionHeader">
+              <h2>Эффективность каналов</h2>
+              <div class="hint">CPL и Scatter CPL vs ROAS</div>
+            </div>
+
+            <div class="twoCol">
+              <div class="card chartCard">
+                <div class="chartTitle">CPL по каналам</div>
+                <div id="cplChart" class="chart"></div>
+              </div>
+              <div class="card chartCard">
+                <div class="chartTitle">CPL vs ROAS</div>
+                <div id="scatterChart" class="chart"></div>
+              </div>
+            </div>
+          </section>
+
+          <section id="funnel" class="section">
+            <div class="sectionHeader">
+              <h2>Воронка</h2>
+              <div class="hint">Показы → Клики → Заявки → Продажи</div>
+            </div>
+            <div class="card chartCard">
+              <div class="chartTitle">Общая воронка (по выбранным фильтрам)</div>
+              <div class="smallNote">
+                Продажи рассчитаны как 25% от заявок (если в источнике нет продаж).
+              </div>
+              <div id="funnelChart" class="chart"></div>
+            </div>
+          </section>
+
+          <footer class="footer">
+            <div>Данные: <span class="mono">data/marketing.json</span></div>
+          </footer>
+        </div>
+
+        <aside class="aiPanel" aria-label="AI Assistant">
+          <div class="aiHeader">
+            <div class="aiTitle">⚡ AI-Аналитик</div>
+          </div>
+          <div class="aiChat" id="aiChat" role="log" aria-live="polite"></div>
+          <div class="aiComposer">
+            <input id="aiInput" class="aiInput" type="text" placeholder="Спросите про каналы, бюджет, ROAS…" />
+            <button id="aiSend" class="aiSend" type="button">Отправить</button>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <div class="loading" id="loading">
+      <div class="loaderCard">
+        <div class="loaderDot"></div>
+        <div>
+          <div class="loaderTitle">Загрузка данных</div>
+          <div class="loaderSub">Подготавливаем графики и KPI…</div>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/utils.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>

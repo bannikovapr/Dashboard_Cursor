@@ -1,0 +1,13 @@
+<svg width="240" height="64" viewBox="0 0 240 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>Desnol</title>
+  <!-- Mark -->
+  <g transform="translate(10 10)">
+    <path d="M0 20 L14 6 L22 14 L8 28 Z" fill="#1ED760"/>
+    <path d="M22 34 L44 12 L52 20 L30 42 Z" fill="#1ED760"/>
+    <path d="M44 48 L74 18 L82 26 L52 56 Z" fill="#1ED760"/>
+  </g>
+  <!-- Wordmark -->
+  <text x="108" y="40" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="700" fill="#000000" letter-spacing="0.2">
+    Desnol
+  </text>
+</svg>
