@@ -4,6 +4,17 @@
   const chartBarColor = () =>
     getComputedStyle(document.documentElement).getPropertyValue("--chart-bar").trim() || "#1ed760";
 
+  const categoricalPalette = () => [
+    "#1e88e5", // blue
+    "#10b981", // green
+    "#f59e0b", // amber
+    "#f43f5e", // rose
+    "#7e57c2", // purple
+    "#0ea5e9", // sky
+    "#22c55e", // emerald
+    "#fbbf24", // yellow
+  ];
+
   const greensCycle = (n) => {
     const pal = typeof U.getChartGreenPalette === "function" ? U.getChartGreenPalette() : [chartBarColor()];
     return Array.from({ length: n }, (_, i) => pal[i % pal.length]);
@@ -116,9 +127,7 @@
     }
     dispose(targetSel);
     el.innerHTML = "";
-    const reliabilityGreens = targetSel === "#chartCausesRel";
-    const cat = reliabilityGreens ? categories.map((c) => shortenLabel(c, 36)) : categories;
-    const n = values.length;
+    const cat = targetSel === "#chartCausesRel" ? categories.map((c) => shortenLabel(c, 36)) : categories;
     const opts = {
       ...chartLayout(height, "bar"),
       plotOptions: {
@@ -126,26 +135,14 @@
           horizontal: true,
           barHeight: "65%",
           borderRadius: 4,
-          ...(reliabilityGreens ? { distributed: true } : {}),
         },
       },
       series: [{ name: "Кол-во", data: values }],
-      colors: reliabilityGreens ? greensCycle(n) : [chartBarColor()],
+      colors: [chartBarColor()],
       legend: { show: false },
-      xaxis: reliabilityGreens
-        ? { categories: cat, labels: { style: { fontSize: "11px" } } }
-        : { categories: cat },
-      yaxis: { labels: { maxWidth: reliabilityGreens ? 200 : 220 } },
-      tooltip: reliabilityGreens
-        ? {
-            y: {
-              formatter: (val, { dataPointIndex } = {}) => {
-                const i = dataPointIndex ?? 0;
-                return `${categories[i] ?? cat[i]}: ${val} отказов`;
-              },
-            },
-          }
-        : { y: { formatter: (val) => `${val} отказов` } },
+      xaxis: targetSel === "#chartCausesRel" ? { categories: cat, labels: { style: { fontSize: "11px" } } } : { categories: cat },
+      yaxis: { labels: { maxWidth: targetSel === "#chartCausesRel" ? 200 : 220 } },
+      tooltip: { y: { formatter: (val) => `${val} отказов` } },
     };
     apexBySelector[targetSel] = new ApexCharts(el, opts);
     apexBySelector[targetSel].render();
@@ -200,6 +197,7 @@
       ...chartLayout(height, "donut"),
       labels,
       series: costsRub,
+      colors: categoricalPalette(),
       legend: { position: "bottom", fontSize: "11px" },
       plotOptions: {
         pie: {
@@ -232,9 +230,9 @@
     const cat = names.map((n) => shortenLabel(n, 40));
     const opts = {
       ...chartLayout(height, "bar"),
-      plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3, distributed: true } },
+      plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3 } },
       series: [{ name: "Часы", data: hours }],
-      colors: greensCycle(hours.length),
+      colors: [chartBarColor()],
       legend: { show: false },
       xaxis: { categories: cat },
       yaxis: { labels: { maxWidth: 200 } },
@@ -257,9 +255,9 @@
     const cat = names.map((n) => shortenLabel(n, 40));
     const opts = {
       ...chartLayout(height, "bar"),
-      plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3, distributed: true } },
+      plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3 } },
       series: [{ name: "Отказов", data: counts }],
-      colors: greensCycle(counts.length),
+      colors: [chartBarColor()],
       legend: { show: false },
       xaxis: { categories: cat },
       yaxis: { labels: { maxWidth: 200 } },
@@ -355,7 +353,7 @@
     const el = document.querySelector(targetSel);
     if (!el) return;
     if (!names.length) {
-      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных MTBF в срезе.</p>';
+      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных СННО в срезе.</p>';
       dispose(targetSel);
       return;
     }
@@ -365,10 +363,63 @@
     const opts = {
       ...chartLayout(height, "bar"),
       plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3 } },
-      series: [{ name: "MTBF, ч", data: hours }],
+      series: [{ name: "СННО, ч", data: hours }],
       colors: [chartBarColor()],
       xaxis: { categories: cat },
       yaxis: { labels: { maxWidth: 220 } },
+      tooltip: { y: { formatter: (v) => `${Math.round(v).toLocaleString("ru-RU")} ч` } },
+    };
+    apexBySelector[targetSel] = new ApexCharts(el, opts);
+    apexBySelector[targetSel].render();
+  }
+
+  function renderMttrTop(names, hours, targetSel = "#chartMttrTop", height = 300) {
+    const el = document.querySelector(targetSel);
+    if (!el) return;
+    if (!names.length) {
+      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных СВВ в срезе.</p>';
+      dispose(targetSel);
+      return;
+    }
+    dispose(targetSel);
+    el.innerHTML = "";
+    const cat = names.map((n) => shortenLabel(n, 38));
+    const opts = {
+      ...chartLayout(height, "bar"),
+      plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3 } },
+      series: [{ name: "СВВ, ч", data: hours }],
+      colors: [chartBarColor()],
+      xaxis: { categories: cat },
+      yaxis: { labels: { maxWidth: 220 } },
+      tooltip: { y: { formatter: (v) => `${Math.round(v).toLocaleString("ru-RU")} ч` } },
+    };
+    apexBySelector[targetSel] = new ApexCharts(el, opts);
+    apexBySelector[targetSel].render();
+  }
+
+  function renderMaterialLaborStacked(labels, materialHours, laborHours, targetSel = "#chartMaterialLabor", height = 300) {
+    const el = document.querySelector(targetSel);
+    if (!el) return;
+    if (!labels.length) {
+      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных по структуре работ.</p>';
+      dispose(targetSel);
+      return;
+    }
+    dispose(targetSel);
+    el.innerHTML = "";
+    const pal = categoricalPalette();
+    const opts = {
+      ...chartLayout(height, "bar"),
+      chart: { ...chartLayout(height, "bar").chart, stacked: true },
+      plotOptions: { bar: { horizontal: false, columnWidth: "58%", borderRadius: 4 } },
+      series: [
+        { name: "Материальные работы, ч", data: materialHours },
+        { name: "Трудозатраты, ч", data: laborHours },
+      ],
+      colors: [pal[0], pal[1]],
+      xaxis: { categories: labels, labels: { rotate: -30 } },
+      yaxis: { title: { text: "Часы" } },
+      legend: { position: "top" },
       tooltip: { y: { formatter: (v) => `${Math.round(v).toLocaleString("ru-RU")} ч` } },
     };
     apexBySelector[targetSel] = new ApexCharts(el, opts);
@@ -392,6 +443,8 @@
     renderClassCostsBar,
     renderKtgLine,
     renderMtbfTop,
+    renderMttrTop,
+    renderMaterialLaborStacked,
     resizeAll,
   };
 })(typeof window !== "undefined" ? window : globalThis);

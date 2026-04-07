@@ -191,7 +191,7 @@
       .filter((v) => v > 0);
     const mtbfAvg = mtbfFiltered.length ? mtbfFiltered.reduce((a, b) => a + b, 0) / mtbfFiltered.length : null;
     set("kpiMtbf", mtbfAvg != null ? `${Math.round(mtbfAvg).toLocaleString("ru-RU")} ч` : "—");
-    set("kpiMtbfHint", "Средняя наработка на отказ по объектам в текущем срезе");
+    set("kpiMtbfHint", "СННО: средняя наработка на отказ по объектам в текущем срезе");
 
     const b = calcKpiBaselines(data);
     const rules = {
@@ -303,6 +303,23 @@
     selectEl.value = pick;
   }
 
+  function updateHeaderChips(data, periodValue, classValue, rows) {
+    const periodChip = document.getElementById("chipPeriod");
+    const classChip = document.getElementById("chipClass");
+    const countChip = document.getElementById("chipEquipCount");
+    const updatedChip = document.getElementById("chipUpdated");
+
+    const periodMap = {
+      all: "Последние 12 мес.",
+      h1: "1-е полугодие 2025",
+      h2: "2-е полугодие 2025",
+    };
+    if (periodChip) periodChip.textContent = periodMap[periodValue] || "Последние 12 мес.";
+    if (classChip) classChip.textContent = classValue === "__all__" ? "Все классы" : classValue;
+    if (countChip) countChip.textContent = String(rows.length || 0);
+    if (updatedChip) updatedChip.textContent = data?.meta?.generated || "auto";
+  }
+
   function topProblemRows(data, monthSet, classFilter, limit = 12) {
     const rows = buildEquipmentRows(data, monthSet, classFilter);
     const ktgMap = data.tables.ktg || {};
@@ -349,6 +366,7 @@
       const monthSet = monthSetFromPeriod(periodSel?.value || "all", allMonths);
       const cls = classSel?.value || "__all__";
       const rows = buildEquipmentRows(data, monthSet, cls);
+      updateHeaderChips(data, periodSel?.value || "all", cls, rows);
       const agg = aggregateClasses(rows);
       const totalEq = agg.reduce((s, a) => s + a.qty, 0) || 1;
       const cats = agg.map((a) => a.class);
@@ -442,6 +460,23 @@
         "#chartMtbfTop",
         300
       );
+      const mttrTop = (data.charts.mttrByEquipment || [])
+        .filter((x) => cls === "__all__" || classifyClass(x.equipment) === cls)
+        .slice(0, 10);
+      Charts.renderMttrTop(
+        mttrTop.map((x) => x.equipment),
+        mttrTop.map((x) => Number(x.mttr_h) || 0),
+        "#chartMttrTop",
+        300
+      );
+      const mlRows = (data.charts.materialLaborByMonth || []).filter((m) => monthSet.has(m.month));
+      Charts.renderMaterialLaborStacked(
+        mlRows.map((m) => shortMonthLabel(m.month)),
+        mlRows.map((m) => Number(m.material_h || m.material || 0)),
+        mlRows.map((m) => Number(m.labor_h || m.labor || 0)),
+        "#chartMaterialLabor",
+        300
+      );
 
       const aggByQty = [...agg].sort((a, b) => b.qty - a.qty);
       Charts.renderClassQtyColumn(
@@ -477,7 +512,12 @@
       const causeSub = document.getElementById("chartCausesSub");
       if (causeSub) causeSub.textContent = "По количеству записей в периоде";
       const causeRelSub = document.getElementById("chartCausesRelSub");
-      if (causeRelSub) causeRelSub.textContent = "Те же данные, что и на сводке";
+      if (causeRelSub) {
+        causeRelSub.textContent =
+          cls !== "__all__"
+            ? `Топ причин по отказам · класс: ${cls}`
+            : "Топ причин отказов по количеству случаев";
+      }
       const ktgTrendSub = document.getElementById("chartKtgTrendSub");
       if (ktgTrendSub) {
         ktgTrendSub.textContent =
@@ -489,8 +529,22 @@
       if (mtbfTopSub) {
         mtbfTopSub.textContent =
           cls !== "__all__"
-            ? `Топ-10 по наработке на отказ · класс: ${cls}`
-            : "Топ-10 по наработке на отказ · все классы";
+            ? `Топ-10 по СННО · класс: ${cls}`
+            : "Топ-10 по СННО · все классы";
+      }
+      const mttrTopSub = document.getElementById("chartMttrTopSub");
+      if (mttrTopSub) {
+        mttrTopSub.textContent =
+          cls !== "__all__"
+            ? `Топ-10 по СВВ · класс: ${cls}`
+            : "Топ-10 по СВВ · все классы";
+      }
+      const matLabSub = document.getElementById("chartMaterialLaborSub");
+      if (matLabSub) {
+        matLabSub.textContent =
+          cls !== "__all__"
+            ? `Труд/материалы по месяцам · класс: ${cls}`
+            : "Часы трудозатрат и материальных работ по месяцам";
       }
       const eqStructSub = document.getElementById("chartStructureEqSub");
       if (eqStructSub) {
@@ -525,35 +579,16 @@
 
   function aiAnswer(q, data) {
     const ql = q.toLowerCase();
-    // #region agent log
-    const dbgLog = (hypothesisId, message, dataObj) =>
-      fetch("http://127.0.0.1:7264/ingest/5e739e58-d099-41dc-a1f8-7dbc72a6b660", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0f49f1" },
-        body: JSON.stringify({
-          sessionId: "0f49f1",
-          runId: "coverage-audit",
-          hypothesisId,
-          location: "js/toir-app.js:aiAnswer",
-          message,
-          data: dataObj,
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-    dbgLog("H1", "entry", { question: q });
-    // #endregion
     const a = data.analysis || {};
     const costsByMonth = data.charts?.costsByMonth || [];
     const failureCauses = a.top3_failure_causes || data.charts?.failureCauses || data.charts?.failure_causes || [];
     const mtbfRows = data.charts?.mtbfByEquipment || [];
     const mttrRows = data.charts?.mttrByEquipment || [];
+    const materialLaborRows = data.charts?.materialLaborByMonth || [];
     const ktgMap = data.tables?.ktg || {};
     const equipmentCosts = data.tables?.equipmentCosts || {};
 
     const noAnswer = (extra = "") => {
-      // #region agent log
-      dbgLog("H3", "noAnswer used", { reason: extra || "generic" });
-      // #endregion
       return {
         fact: "Сожалею, но пока не могу ответить на ваш вопрос.",
         conclusion: extra || "В доступных данных нет нужных полей для точного ответа.",
@@ -562,21 +597,42 @@
     };
 
     function detectIntent() {
-      if (/прогноз|предска|forecast/i.test(ql)) return "forecast";
-      if (/что делать|что спросить|рекоменд|действ/i.test(ql)) return "recommendation";
-      if (/кратк|обзор|проанализ|весь дашборд|всего дашборд|в целом|что важного/i.test(ql)) return "dashboard_overview";
-      if (/почему.*затрат|затрат.*почему|выросл.*затрат|снизил.*затрат/i.test(ql)) return "why_costs_changed";
-      if (/почему.*отказ|отказ.*почему|выросл.*отказ|снизил.*отказ/i.test(ql)) return "why_failures_changed";
-      if (/сравн|vs|против/i.test(ql) && /месяц|январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр/.test(ql))
-        return "compare_costs_by_month";
-      if (/причин|отказ|дефект/i.test(ql)) return "top_failure_causes";
-      if (/топ|лидер|сам.*дорог|больше всего.*затрат|затрат.*оборуд/i.test(ql)) return "top_cost_equipment";
-      if (/mttr/i.test(ql)) return "mttr_by_equipment";
-      if (/mtbf|наработк/i.test(ql)) return "mtbf_by_equipment";
-      if (/ктг|готовност/i.test(ql)) return "ktg_by_equipment";
-      if (/месяц|динам|тренд|пик/i.test(ql)) return "trend_costs_by_month";
-      if (/сколько|общ.*затрат|дефектов|оборудовани/i.test(ql)) return "kpi_fact";
-      if (/структур|класс|парк/.test(ql)) return "equipment_cost_detail";
+      const flags = {
+        forecast: /прогноз|предска|forecast/i.test(ql),
+        recommendation: /что делать|что спросить|рекоменд|действ/i.test(ql),
+        overview: /кратк|обзор|проанализ|весь дашборд|всего дашборд|в целом|что важного/i.test(ql),
+        whyCosts: /почему.*затрат|затрат.*почему|выросл.*затрат|снизил.*затрат/i.test(ql),
+        whyFailures: /почему.*отказ|отказ.*почему|выросл.*отказ|снизил.*отказ/i.test(ql),
+        compareMonths:
+          /сравн|vs|против/i.test(ql) &&
+          /месяц|январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр/.test(ql),
+        materialLabor: /материал|трудозатрат|труд.*материал|структур.*работ/i.test(ql),
+        classCost: /доля.*затрат.*класс|затрат.*по класс|структур.*затрат.*класс/i.test(ql),
+        failureCauses: /причин|отказ|дефект/i.test(ql),
+        topCost: /топ.*затрат|лидер.*затрат|сам.*дорог|больше всего.*затрат|затрат.*оборуд/i.test(ql),
+        mttr: /mttr|свв|восстанов/i.test(ql),
+        mtbf: /mtbf|снно|наработк/i.test(ql),
+        ktg: /ктг|готовност/i.test(ql),
+        trend: /месяц|динам|тренд|пик/i.test(ql),
+        kpi: /сколько|общ.*затрат|дефектов|оборудовани/i.test(ql),
+        equipmentDetail: /структур|класс|парк/.test(ql),
+      };
+      if (flags.forecast) return "forecast";
+      if (flags.recommendation) return "recommendation";
+      if (flags.overview) return "dashboard_overview";
+      if (flags.whyCosts) return "why_costs_changed";
+      if (flags.whyFailures) return "why_failures_changed";
+      if (flags.compareMonths) return "compare_costs_by_month";
+      if (flags.materialLabor) return "material_labor_structure";
+      if (flags.classCost) return "class_cost_structure";
+      if (flags.failureCauses) return "top_failure_causes";
+      if (flags.mttr) return "mttr_by_equipment";
+      if (flags.mtbf) return "mtbf_by_equipment";
+      if (flags.topCost) return "top_cost_equipment";
+      if (flags.ktg) return "ktg_by_equipment";
+      if (flags.trend) return "trend_costs_by_month";
+      if (flags.kpi) return "kpi_fact";
+      if (flags.equipmentDetail) return "equipment_cost_detail";
       return "unsupported";
     }
 
@@ -618,9 +674,6 @@
     }
 
     const intent = detectIntent();
-    // #region agent log
-    dbgLog("H2", "intent", { intent });
-    // #endregion
 
     if (intent === "forecast") {
       return noAnswer("Для прогноза не задан проверяемый метод расчёта.");
@@ -646,13 +699,6 @@
       const pair = monthHits.length >= 2 ? monthHits.slice(0, 2) : costsByMonth.slice(-2);
       const m1 = pair[0];
       const m2 = pair[1];
-      // #region agent log
-      dbgLog("H4", "compare selection", {
-        monthHits: monthHits.map((x) => x.month),
-        selected: [m1?.month, m2?.month],
-        fallbackUsed: monthHits.length < 2,
-      });
-      // #endregion
       const diff = (Number(m2?.total) || 0) - (Number(m1?.total) || 0);
       return {
         fact: `${m1.month}: ${U.formatMoneyMln(m1.total)}; ${m2.month}: ${U.formatMoneyMln(m2.total)}.`,
@@ -696,8 +742,8 @@
       const top = [...mtbfRows].sort((x, y) => (Number(y.mtbf_h) || 0) - (Number(x.mtbf_h) || 0)).slice(0, 3);
       return {
         fact: top.map((x) => `${x.equipment}: ${Math.round(Number(x.mtbf_h) || 0).toLocaleString("ru-RU")} ч`).join("; "),
-        conclusion: "MTBF показывает устойчивость оборудования между отказами.",
-        action: "Для объектов с наименьшим MTBF пересмотрите набор превентивных работ.",
+        conclusion: "СННО показывает устойчивость оборудования между отказами.",
+        action: "Для объектов с наименьшей СННО пересмотрите набор превентивных работ.",
       };
     }
 
@@ -706,8 +752,45 @@
       const worst = [...mttrRows].sort((x, y) => (Number(y.mttr_h) || 0) - (Number(x.mttr_h) || 0)).slice(0, 3);
       return {
         fact: worst.map((x) => `${x.equipment}: ${Math.round(Number(x.mttr_h) || 0).toLocaleString("ru-RU")} ч`).join("; "),
-        conclusion: "Длительное восстановление увеличивает потери доступности.",
+        conclusion: "СВВ отражает длительность восстановления: чем ниже, тем лучше.",
         action: "Проверьте обеспеченность ЗИП и регламенты ремонта для этих объектов.",
+      };
+    }
+
+    if (intent === "material_labor_structure") {
+      if (!materialLaborRows.length) return noAnswer("В выгрузке нет структуры работ по трудозатратам и материалам.");
+      const totalMaterial = materialLaborRows.reduce((s, r) => s + (Number(r.material_h || r.material || 0) || 0), 0);
+      const totalLabor = materialLaborRows.reduce((s, r) => s + (Number(r.labor_h || r.labor || 0) || 0), 0);
+      const sum = totalMaterial + totalLabor;
+      if (sum <= 0) return noAnswer("В структуре работ нет числовых значений по часам.");
+      const matPct = (100 * totalMaterial) / sum;
+      const labPct = (100 * totalLabor) / sum;
+      return {
+        fact: `Материальные работы: ${Math.round(totalMaterial).toLocaleString("ru-RU")} ч (${matPct.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%); трудозатраты: ${Math.round(totalLabor).toLocaleString("ru-RU")} ч (${labPct.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%).`,
+        conclusion: labPct >= matPct ? "В текущем срезе преобладают трудозатраты." : "В текущем срезе преобладают материальные работы.",
+        action: "Проверьте месяцы с максимальной суммарной нагрузкой и состав работ в них.",
+      };
+    }
+
+    if (intent === "class_cost_structure") {
+      const rows = Object.entries(equipmentCosts)
+        .map(([name, info]) => ({ name, className: classifyClass(name), total: Number(info?.total || 0) }))
+        .filter((r) => r.total > 0);
+      if (!rows.length) return noAnswer("В выгрузке нет детализации затрат по классам.");
+      const byClass = new Map();
+      for (const r of rows) byClass.set(r.className, (byClass.get(r.className) || 0) + r.total);
+      const total = [...byClass.values()].reduce((s, v) => s + v, 0);
+      if (total <= 0) return noAnswer("В выгрузке нет сумм для структуры затрат по классам.");
+      const top = [...byClass.entries()]
+        .map(([cls, val]) => ({ cls, val, pct: (100 * val) / total }))
+        .sort((a, b) => b.val - a.val)
+        .slice(0, 3);
+      return {
+        fact: top
+          .map((x, i) => `${i + 1}) ${x.cls}: ${U.formatMoneyMln(x.val)} (${x.pct.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%)`)
+          .join("; "),
+        conclusion: "Затраты концентрируются в ограниченном наборе классов оборудования.",
+        action: "Сфокусируйте анализ работ и причин отказов сначала на этих классах.",
       };
     }
 

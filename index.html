@@ -16,14 +16,14 @@
   <body>
     <div class="layout">
       <div class="layout-main">
-        <header class="card" style="padding: 18px 20px; margin-bottom: 14px">
+        <header class="card header-card" style="padding: 18px 20px; margin-bottom: 14px">
           <div class="top-header">
             <div class="brand-band">
               <img
                 class="brand-logo-img"
-                src="assets/desnol-logo.png"
-                width="320"
-                height="88"
+                src="assets/desnol-userpic.png"
+                width="90"
+                height="90"
                 alt="Desnol"
               />
               <div class="brand-lockup">
@@ -32,27 +32,34 @@
                 </div>
               </div>
             </div>
-            <div class="filters-row">
-              <div class="filter-field">
-                <label for="panelPeriod">Период</label>
-                <select id="panelPeriod" aria-label="Период">
-                  <option value="all">Последние 12 месяцев</option>
-                  <option value="h1">1-е полугодие 2025</option>
-                  <option value="h2">2-е полугодие 2025</option>
-                </select>
-              </div>
-              <div class="filter-field">
-                <label for="panelClass">Класс оборудования</label>
-                <select id="panelClass" aria-label="Класс оборудования"></select>
-              </div>
+            <div class="header-side">
             </div>
           </div>
-
-          <div class="tabs" role="tablist" aria-label="Разделы дашборда">
-            <button type="button" class="tab" data-tab="summary" aria-selected="true">Сводка</button>
-            <button type="button" class="tab" data-tab="costs">Затраты</button>
-            <button type="button" class="tab" data-tab="reliability">Надёжность</button>
-            <button type="button" class="tab" data-tab="equipment">Оборудование</button>
+          <div class="header-chips" aria-label="Контекст текущего среза">
+            <span class="header-chip">Период: <b id="chipPeriod">12 мес.</b></span>
+            <span class="header-chip">Класс: <b id="chipClass">Все классы</b></span>
+            <span class="header-chip">Объектов: <b id="chipEquipCount">—</b></span>
+            <span class="header-chip">Обновлено: <b id="chipUpdated">—</b></span>
+          </div>
+          <div class="filters-row">
+            <div class="filter-field">
+              <label for="panelPeriod">Период</label>
+              <select id="panelPeriod" aria-label="Период">
+                <option value="all">Последние 12 месяцев</option>
+                <option value="h1">1-е полугодие 2025</option>
+                <option value="h2">2-е полугодие 2025</option>
+              </select>
+            </div>
+            <div class="filter-field">
+              <label for="panelClass">Класс оборудования</label>
+              <select id="panelClass" aria-label="Класс оборудования"></select>
+            </div>
+            <div class="tabs filters-tabs" role="tablist" aria-label="Разделы дашборда">
+              <button type="button" class="tab" data-tab="summary" aria-selected="true">Сводка</button>
+              <button type="button" class="tab" data-tab="costs">Затраты</button>
+              <button type="button" class="tab" data-tab="reliability">Надёжность</button>
+              <button type="button" class="tab" data-tab="equipment">Оборудование</button>
+            </div>
           </div>
         </header>
 
@@ -96,7 +103,7 @@
               <div class="hint" id="kpiPerEqHint">—</div>
             </div>
             <div class="card kpi-card">
-              <div class="label">MTBF (средний)</div>
+              <div class="label">СННО (средний)</div>
               <div class="value" id="kpiMtbf">—</div>
               <div class="hint" id="kpiMtbfHint">—</div>
             </div>
@@ -129,11 +136,16 @@
           </div>
 
           <div id="panel-charts-costs" class="panel-charts" data-panel="costs" hidden>
-            <div class="charts-grid charts-grid--3">
+            <div class="charts-grid charts-grid--sub">
               <div class="card chart-card">
                 <div class="chart-title">Помесячные затраты</div>
-                <div class="chart-sub">Тот же срез, что на главном графике сводки</div>
+                <div class="chart-sub">Динамика затрат по выбранному периоду и классу оборудования</div>
                 <div class="chart-box" id="chartCostsTab"></div>
+              </div>
+              <div class="card chart-card">
+                <div class="chart-title">Структура работ по месяцам (труд/материалы)</div>
+                <div class="chart-sub" id="chartMaterialLaborSub">Часы трудозатрат и материальных работ в выбранном срезе</div>
+                <div class="chart-box" id="chartMaterialLabor"></div>
               </div>
               <div class="card chart-card">
                 <div class="chart-title">Топ-10 объектов по затратам</div>
@@ -149,33 +161,26 @@
           </div>
 
           <div id="panel-charts-reliability" class="panel-charts" data-panel="reliability" hidden>
-            <div class="charts-grid charts-grid--3">
+            <div class="charts-grid charts-grid--sub">
               <div class="card chart-card">
                 <div class="chart-title">Причины отказов</div>
-                <div class="chart-sub" id="chartCausesRelSub">По количеству в выгрузке</div>
+                <div class="chart-sub" id="chartCausesRelSub">Топ причин по количеству отказов в текущем срезе</div>
                 <div class="chart-box" id="chartCausesRel"></div>
               </div>
-              <div class="card chart-card">
-                <div class="chart-title">Топ-10 по суммарным простоям</div>
-                <div class="chart-sub">Часы простоя по объектам в срезе</div>
-                <div class="chart-box" id="chartTopDowntime"></div>
-              </div>
-              <div class="card chart-card">
-                <div class="chart-title">Топ-10 по числу отказов</div>
-                <div class="chart-sub">В выбранном периоде и классе</div>
-                <div class="chart-box" id="chartTopDefects"></div>
-              </div>
-            </div>
-            <div class="charts-grid charts-grid--sub" style="margin-top: 14px">
               <div class="card chart-card">
                 <div class="chart-title">КТГ по месяцам</div>
                 <div class="chart-sub" id="chartKtgTrendSub">Средний КТГ по объектам за период</div>
                 <div class="chart-box" id="chartKtgTrend"></div>
               </div>
               <div class="card chart-card">
-                <div class="chart-title">MTBF по объектам (топ)</div>
-                <div class="chart-sub" id="chartMtbfTopSub">Среднее время между отказами, ч</div>
+                <div class="chart-title">СННО по объектам (топ)</div>
+                <div class="chart-sub" id="chartMtbfTopSub">Средняя наработка на отказ, ч (чем выше, тем лучше)</div>
                 <div class="chart-box" id="chartMtbfTop"></div>
+              </div>
+              <div class="card chart-card">
+                <div class="chart-title">СВВ по объектам (топ)</div>
+                <div class="chart-sub" id="chartMttrTopSub">Среднее время восстановления, ч (чем ниже, тем лучше)</div>
+                <div class="chart-box" id="chartMttrTop"></div>
               </div>
             </div>
           </div>
@@ -254,12 +259,10 @@
 
       <aside class="card ai-panel layout-sidebar" aria-label="AI-ассистент">
         <h2>AI-ассистент</h2>
-        <p class="ai-hint">
-          Ответы строятся только по загруженному JSON: факт → вывод → действие. Без обращения к внешним данным.
-        </p>
+        <p class="ai-desc">Этот блок анализирует данные дашборда и отвечает по формату факт → вывод → действие.</p>
         <div class="ai-log" id="aiLog"></div>
         <div class="ai-input-row">
-          <textarea id="aiInput" placeholder="Например: какие три причины отказов чаще всего?" rows="3"></textarea>
+          <textarea id="aiInput" placeholder='Задайте вопрос, например: "Какой общий объем затрат?"' rows="3"></textarea>
           <button type="button" class="btn-cta" id="aiSend">Спросить</button>
         </div>
       </aside>
