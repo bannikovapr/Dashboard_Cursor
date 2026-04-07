@@ -1,143 +1,186 @@
 ---
 name: dashboard-builder
 description: >
-  Use this skill when the user wants to create a premium dark-mode analytics dashboard
-  from tabular data (Excel, CSV, JSON). Triggers on: "create dashboard", "build dashboard",
-  "make dashboard from data", "visualize my table", "сделай дашборд", "создай дашборд",
-  "дашборд из таблицы".
+  Use this skill when the user wants to build the «Стратегический дашборд ТОИР» layout:
+  light UI, compact header (логотип + заголовок + фильтры), tabs (Сводка/Затраты/Надёжность/Оборудование),
+  filters (период + класс), TOIR KPIs с семантической окраской значений, ApexCharts, tables, AI side panel,
+  Montserrat, логотип Desnol, unified JSON from 7 Excel reports. Triggers: «сделай дашборд ТОиР»,
+  «сверстай стратегический дашборд», «build TOIR dashboard», «макет ТОиР», «toir.json frontend».
 ---
-# Dashboard Builder — Premium SaaS Analytics
+
+# Dashboard Builder — Стратегический дашборд ТОИР
 
 ## Role
 
-You are a senior frontend engineer specializing in data visualization dashboards.
-You build production-quality, premium dark-mode dashboards from raw data using Vanilla JS + ApexCharts.
+Ты — senior frontend-инженер. Собираешь **светлый** дашборд на **Vanilla JS + ApexCharts (CDN)**, один `fetch('data/toir.json')`, клиентская фильтрация. Эталонные имена файлов в проекте:
+
+| Назначение | Файл |
+|------------|------|
+| Разметка | `index.html` |
+| Стили | `css/toir.css` |
+| Логика | `js/toir-app.js` |
+| Графики | `js/toir-charts.js` |
+| Утилиты, базовые опции Apex | `js/toir-utils.js` |
+| Данные | `data/toir.json` |
+| Бренд (опционально) | `assets/brand.json` |
+| Логотип | `assets/desnol-logo.png` |
+
+Глобально: `window.dashboardData` после загрузки. Шрифт: **Montserrat** (Google Fonts).
+
+**Шапка (фактическая верстка):** блок `.brand-band` — **колонка**: сверху логотип `assets/desnol-logo.png` (`.brand-logo-img`, компактный размер в CSS), **под ним** заголовок **«Стратегический дашборд ТОИР»** (`h1` в `.titles`). Ниже — `.filters-row` (период, класс). **Не выводить** в шапке: название организации, маркетинговый подзаголовок, строку «Период данных: …» (период при необходимости — в `footer` / `meta`, не дублировать брендинг). Табы идут **после** шапки в том же `<header>`.
+
+### Входные данные для сборки `toir.json`
+
+По умолчанию backend-скрипт собирает JSON из 7 файлов в `data/`:
+
+- `Анализ отказов.xlsx`
+- `КТГ.xlsx`
+- `Наработка на отказ.xlsx`
+- `Простой.xlsx`
+- `Процент износа.xlsx`
+- `Список оборудования.xlsx`
+- `Фактические затраты по ОР.xlsx`
+
+Допускается fallback на `Cursor_test2.xlsx` только для совместимости.
 
 ---
 
-## ARCHITECTURE
+## МАКЕТ СТРАНИЦЫ
 
-The dashboard follows a strict file structure:
+### Шапка
 
-project/
-├── index.html          ← Main entry (layout + sidebar + sections)
-├── css/
-│   └── styles.css      ← Design system
-├── js/
-│   ├── utils.js        ← Formatting, colors, animations, chart base options
-│   ├── charts.js       ← All chart render functions (ApexCharts)
-│   └── app.js          ← Data loading, KPI calc, filters, sparklines, initialization
-├── data/
-│   └── data.json       ← Normalized data
-└── scripts/
-    └── convert.py      ← Python script to convert Excel → JSON
+- Вертикальный блок: **логотип** → **название дашборда** → **фильтры**.
+- **Фильтры (ровно два):** **период** (`#panelPeriod`), **класс оборудования** (`#panelClass`).
+- Подписи фильтров и табов — **по-русски**, без технических имён полей JSON.
 
-CDN (no npm/build):
-- Google Fonts: Inter (400–800) + JetBrains Mono (400–700)
-- Lucide Icons: unpkg.com/lucide@latest/dist/umd/lucide.min.js
-- ApexCharts: cdn.jsdelivr.net/npm/apexcharts@latest/dist/apexcharts.min.js
+### Компоновка
 
----
+- Сетка `.layout`: основная колонка (`.layout-main`) + **правая** (`.layout-sidebar`, фиксированная ширина в CSS) с **AI-ассистентом** (`<aside class="ai-panel">`). Ответы AI — только по `window.dashboardData` / загруженному JSON; формат см. skill `dashboard-assistant`.
+- Макет дашборда имеет **фиксированную ширину** (`--dashboard-fixed-width` в `css/toir.css`); при смене ширины колонок сверяйся с текущими значениями в CSS.
 
-## STEP-BY-STEP INSTRUCTIONS
+### Табы
 
-### Step 1 — Analyze Source Data
-1. Find the user's data file (.xlsx, .csv, or .json) in the project
-2. Read it, identify: Channels/Categories, Time dimension, Numeric metrics, Deal/transaction data
-3. Print summary: "Found X channels, Y months, Z metrics"
+**Сводка | Затраты | Надёжность | Оборудование.** Панели графиков — отдельные блоки с `data-panel="…"` и `hidden` у неактивных; переключение меняет видимость без перезагрузки.
 
-### Step 2 — Normalize Data to JSON
-Create data/data.json with schema:
-{
-  "meta": { "title": "...", "period": "Окт 2025 — Мар 2026", "channels": [{"key":"...", "name":"...", "icon":"..."}] },
-  "daily": [{ "date":"2025-10-01", "channel":"key", "impressions":0, "clicks":0, "ctr":0, "budget":0 }],
-  "funnel": [{ "month":"2025-10", "channel":"Name", "impressions":0, "clicks":0, "transitions":0, "leads":0, "sales":0, "revenue":0, "budget":0, "cpl":0, "roas":0 }],
-  "deals": [{ "id":1, "status":"Закрыта", "product":"...", "amount":0, "manager":"...", "channel":"...", "date":"..." }]
-}
-Calculate derived: CPL = budget/leads, ROAS = revenue/budget, CR = sales/leads.
-If no deals data → omit that section entirely.
+### KPI (две строки по четыре карточки)
 
-### Step 3 — Design System (css/styles.css)
-Colors:
-  --bg-deep: #08090d
-  --bg-base: #0d0f14
-  --bg-elevated: #14161e
-  --bg-card: #1a1d28
-  --accent: #c8ff00
-  --accent-dim: rgba(200,255,0,0.12)
-  --text-primary: #f0f2f5
-  --text-secondary: rgba(240,242,245,0.55)
-  --border: rgba(255,255,255,0.07)
+**Верхняя строка:** общие затраты ТОиР (`#kpiTotal`); доля топ-3 в затратах (`#kpiTop3`); средняя стоимость на единицу (`#kpiAvgUnit`); часы простоев суммой (`#kpiDown`).  
+**Вторая строка:** количество отказов в срезе (`#kpiFails`); КТГ средний (`#kpiKtg`); отказов на единицу парка (`#kpiPerEq`); **MTBF средний** (`#kpiMtbf`, из `charts.mtbfByEquipment` в текущем срезе).
 
-Typography: Inter for UI, JetBrains Mono for numbers.
-Cards: glassmorphism with backdrop-filter: blur, border: 1px solid var(--border).
-Hover glow: color-mix(in srgb, var(--kpi-color) 35%, transparent) border + box-shadow.
-KPI grid: grid-template-columns: repeat(4, 1fr) — always 4 columns.
-Sidebar: fixed left, 60px wide, icon-only navigation.
-Scroll progress bar: fixed top, neon gradient.
+Подсказки (`#…Hint`) — **короткие и по-русски**, без отсылок к 1С, без «уточняйте в учётной системе», без технических имён полей. Подсказка к сумме затрат: только контекст периода (без названия организации в UI).
 
-### Step 4 — utils.js
-CHANNEL_COLORS: ["#c8ff00","#22c55e","#3b82f6","#f59e0b","#ef4444","#a78bfa","#06b6d4","#f97316","#ec4899","#a855f7"]
-Functions: formatNumber, formatShort, formatPercent, animateCounter, getBaseChartOptions, deepMerge.
+### KPI-диапазоны (обязательно)
 
-### Step 5 — charts.js (Charts class)
-renderTraffic(data)     → Stacked Area: daily/weekly traffic by channel
-renderFunnel(data)      → Horizontal Bar: PERCENTAGE-based funnel (100%→X%), absolute values in labels
-renderCPL(data)         → Horizontal Bar: CPL by channel, sorted ascending
-renderROAS(data)        → Horizontal Bar: ROAS by channel, sorted descending
-renderScatter(data)     → Scatter: CPL vs ROAS, each channel = 1 point
-renderHeatmap(data)     → Heatmap: plan vs fact % deviation, always with dataLabels
-renderDeals(data)       → Donut: deals by status
-renderProducts(data)    → Vertical Bar: revenue by product
-renderManagers(data)    → Horizontal Bar: revenue by manager
-renderSparkline(id,data,color) → Area sparkline inside KPI cards
+Для **каждой KPI-карточки** внедрять 3 зоны оценки с цветом значения:
 
-CRITICAL:
-1. Funnel MUST be percentage-based — show each stage as % of first stage
-2. CPL axis — use formatShort + tickAmount:5 to prevent label overlap
-3. Scatter — calculate smart xaxis/yaxis min/max based on data bounds × 1.2
-4. Heatmap — always enable dataLabels with +X% / -X% format
-5. Product labels — use trim:true, hideOverlappingLabels:true
+- **целевое** → зелёный,
+- **стандартное** → жёлтый,
+- **ниже нормы** → красный.
 
-### Step 6 — app.js
-1. fetch('data/data.json') → store in DATA
-2. Channel filters: toggle buttons, click = toggle channel visibility
-3. Month filters: pill buttons, "Все" selects all
-4. KPI cards (8 cards, 4×2): Общий бюджет, Заявки, Выручка, Продажи, Лучший ROAS, Лучший CPL, CR%, CAC
-5. Sparklines per-month trend for each KPI
-6. Trend badges: ↑ +17.3% vs Фев (green=good, red=bad)
-7. Scroll progress bar + sidebar scroll spy + loading overlay
+Минимум для надёжности использовать публичные ориентиры:
 
-### Step 7 — index.html
-Sidebar (icon nav) + topbar (title + filters) + KPI grid + sections:
-  Трафик (area + funnel)
-  → Эффективность каналов (CPL + ROAS + scatter)
-  → Бюджет (heatmap)
-  → Сделки (donut + products + managers)
-Skip sections where data is missing.
+- **КТГ / availability:** standard `>= 90%`, target `>= 95%`;
+- **MTBF:** standard `>= 2000 ч`, target `>= 5000 ч`.
 
-### Step 8 — Launch & Verify
-npx -y serve . -p 3000
-Verify: KPI cards correct, charts load, filters work, hover glow works, no console errors.
+Для KPI, где универсальных отраслевых порогов нет (затраты, отказы и т.п.), использовать baseline полного среза в `toir-app.js` (`calcKpiBaselines`: все месяцы + все классы) и относительные пороги **±10%** к baseline. Классы состояния навешивать на **элемент `.value`** карточки: `kpi-status-target` | `kpi-status-standard` | `kpi-status-below` (стили в `css/toir.css`). При отсутствии числа — классы не задавать.
+
+### Графики
+
+- **Сводка:** герой-блок **«Затраты ТОИР по месяцам»** (`#chartCosts`) — **без** бейджа «Главный график»; сетка 2× — структура по классам (`#chartStructure`); причины отказов (`#chartCauses`).
+- **Затраты:** помесячные (`#chartCostsTab`); топ по затратам (`#chartTopCostEquip`); доля затрат по классам (`#chartClassCostDonut`).
+- **Надёжность:** первый ряд — три горизонтальных бара (причины `#chartCausesRel`, простои `#chartTopDowntime`, отказы `#chartTopDefects`) с **зелёной палитрой** по правилам ниже; второй ряд — **КТГ по месяцам** (`#chartKtgTrend`), **MTBF топ** (`#chartMtbfTop`).
+- **Оборудование:** структура парка (`#chartStructureEq`); **процент износа** — картинка из `charts.wearImage` в `#chartWearImage` (контейнер `.chart-box--image`, без лишней рамки/подписи-заглушки вокруг изображения); затраты по классам (`#chartClassCostsBar`).
+
+Пустые данные — сообщение «Нет данных» в контейнере графика, без падения скрипта.
+
+### Таблицы
+
+Классы оборудования (затраты, простои, отказы, КТГ); топ проблемных объектов с кнопкой «Карточка» (заглушка допустима).
+
+### Стили
+
+Светлый фон, белые карточки. Активный таб — тёмно-синий. **CTA:** белый фон, **зелёная** обводка; hover — зелёный фон, белый текст. Читать токены из `assets/brand.json` в `:root` (**светлая** тема сохраняется).
 
 ---
 
-## ADAPTATION RULES
-- Map columns to: channel, date, budget, impressions, clicks, leads, sales, revenue
-- Missing data → skip that chart/section
-- brand.json exists → read colors from there, replace CSS :root variables
-- Labels stay in Russian
+## КОПИРАЙТ И UI-ТЕКСТ (обязательно)
+
+На видимой странице **запрещено**:
+
+- Абзацы вроде «Надёжность: причины — `charts.failureCauses`; … `tables.ktg`; … `tables.equipmentDefects`».
+- Любые `<code>` / бэктики с именами ключей JSON в подзаголовках графиков и «подсказках» над сеткой графиков.
+- Подписи «total_downtime_h из ktg», «equipmentDefects (в срезе)», «heuristic-класс» и аналоги.
+- Фразы KPI: «при необходимости уточняется в 1С».
+
+**Нужно:** нейтральные формулировки («в выбранном периоде и классе», «по объектам в срезе», «те же данные, что на сводке» без путей к файлам).
+
+В **AI-ответах** тоже не выводить пользователю строки вида «См. `charts.failureCauses`» — заменять на понятный текст («нет агрегата по причинам в выгрузке»).
 
 ---
 
-## QUALITY CHECKLIST
-- No axis label overlap on any chart
-- Funnel shows all stages visually (percentage-based)
-- Heatmap has values visible in cells
-- Scatter shows all points within visible area
-- KPI grid is 4×N with no orphan cards
-- Hover glow works on KPI and chart cards
-- Trends show directional arrows: green=good, red=bad
-- Responsive on 768px (2-col KPI) and 480px (1-col)
-- No console errors
-- Data matches source file
+## ЦВЕТА ГРАФИКОВ (обязательно)
+
+1. **Большинство графиков** — **одна** серия **одного** цвета: CSS `--chart-bar` (применении бренда из `accent` в `applyBrandTokens` — синхронизировать с акцентом).
+2. **Исключение — ровно три графика на вкладке «Надёжность»:**
+   - причины отказов **в этой вкладке** (отдельный контейнер, не дубль сводки);
+   - топ по суммарным простоям;
+   - топ по числу отказов.  
+   Для них: **несколько оттенков зелёного** (палитра из `:root` `--chart-g-1` … `--chart-g-8` и функция вроде `getChartGreenPalette()` + циклирование по числу баров), режим `plotOptions.bar.distributed: true`, массив `colors` той же длины, что данные.
+3. **Не** подбирать для этой тройки бирюзу/коричневый/оранжевый — только зелёная гамма.
+4. **Легенду цветов для этих трёх графиков не показывать** (`legend.show: false`), чтобы не засорять макет.
+
+График «Причины отказов» на **Сводке** остаётся **монохромным** (один `--chart-bar`), как остальная витрина.
+
+---
+
+## APEXCHARTS — ШИРИНА И ВКЛАДКИ (обязательно)
+
+Графики внутри изначально **скрытых** панелей получают нулевую ширину при первом рендере.
+
+- У `chart`: `width: '100%'`, `redrawOnParentResize: true`, `redrawOnWindowResize: true`.
+- В базовых опциях — достаточный `grid.padding` (в т.ч. справа), чтобы подписи осей не слипались.
+- Контейнеры: у карточек графика `min-width: 0`, у `.chart-box` — `width: 100%`, `min-width: 0` (сетка `grid` не должна сжимать полотно до «сплющенной» оси X).
+- После **смены таба** вызывать **пересчёт размеров всех экземпляров** Apex (например экспорт `resizeAll()` из модуля графиков и вызов из обработчика табов).
+- После полного обновления данных (`drain`) — отложенный `resizeAll()` (короткий `setTimeout` / `requestAnimationFrame`), чтобы активная панель дорисовалась с правильной шириной.
+
+Горизонтальные бары: следить за `tickAmount`, форматтерами процентов и при необходимости **maxWidth** подписей категорий, чтобы числовая ось не превращалась в «0%20%40%…» без пробелов.
+
+---
+
+## СХЕМА `data/toir.json` (ориентир)
+
+Реальные ключи должны совпадать с фронтом. Типично:
+
+- `meta`: `source`, `period`, при необходимости `organization`.
+- `kpis`: агрегаты для верхних карточек (как минимум `total_cost`, `total_defects`, `equipment_count` — расширять по коду `toir-app.js`).
+- `charts.costsByMonth`: массив `{ month, total, … }`.
+- `charts.failureCauses` или `charts.failure_causes`: `{ cause, count }[]`.
+- `charts.mtbfByEquipment`: массив `{ equipment, mtbf_h }[]` для KPI MTBF и графика «MTBF топ».
+- `charts.wearImage`: строка URL/путь к изображению отчёта «Процент износа» (рендер в `#chartWearImage`).
+- Таблицы/объекты по оборудованию, КТГ (в т.ч. помесячный КТГ для тренда), дефекты — как ожидает `toir-app.js`.
+
+Нет данных — пустой массив / отсутствие серии; виджет не ломает страницу.
+
+---
+
+## ПОШАГОВЫЙ ЧЕКЛИСТ
+
+1. **HTML:** семантика, табы, контейнеры графиков с уникальными `id`, KPI, таблицы, `aside` с AI.
+2. **CSS:** светлая тема, сетка, `.chart-card` / `.chart-box` с `min-width: 0`, стили табов и CTA, классы `.kpi-status-*` на значениях KPI.
+3. **`toir-utils.js`:** форматирование (млн ₽, ч, %, шт.), `getBaseChartOptionsLight()`, `getChartGreenPalette()` и CSS-переменные зелёной палитры.
+4. **`toir-charts.js`:** функции рендера по каждому контейнеру; правило цветов (монохром vs тройка надёжности); `dispose`/пересоздание без утечек; `resizeAll()`.
+5. **`toir-app.js`:** загрузка JSON, `applyBrandTokens`, заполнение класса, `drain()` с фильтрами, переключение табов + `resizeAll`, пустые данные, расчёт KPI и семантическая окраска `.value` (см. раздел KPI-диапазоны).
+6. Запуск через локальный HTTP; проверка всех четырёх табов и отсутствия «сплющенных» осей.
+
+---
+
+## ЧЕКЛИСТ КАЧЕСТВА
+
+- Два фильтра (период + класс) или явно документировано иное.
+- Шапка: логотип сверху, заголовок под ним, фильтры ниже; без лишнего корпоративного текста и без бейджа «Главный график».
+- Четыре таба; на сводке герой-график и два блока в сетке 2×; на «Надёжности» три бара в ряд + второй ряд (КТГ по месяцам, MTBF).
+- Восемь KPI-карточек; значения окрашиваются по правилам «целевое / стандарт / ниже нормы».
+- Нет технического мусора в UI (пути JSON, «1С» в подсказках KPI).
+- Цвета: монохром для массы графиков; **только три** на «Надёжность» (первый ряд) — зелёные оттенки, **без** отдельной цветовой легенды.
+- После смены таба графики перерисовываются по ширине контейнера.
+- `window.dashboardData` доступен; консоль чистая; данные согласованы с `toir.json`.

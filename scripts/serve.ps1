@@ -1,5 +1,6 @@
 param(
-  [int]$Port = 5173
+  [int]$Port = 5173,
+  [switch]$OpenBrowser
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,6 +28,10 @@ function Start-StaticServer([int]$p) {
   $prefix = "http://localhost:$p/"
   $listener.Prefixes.Add($prefix)
   $listener.Start()
+
+  if ($OpenBrowser) {
+    Start-Process $prefix | Out-Null
+  }
 
   Write-Output "Serving $root"
   Write-Output "Listening on $prefix"
@@ -72,10 +77,9 @@ for ($i = 0; $i -lt 50; $i++) {
   try {
     Start-StaticServer -p $tryPort
     break
+  } catch [System.Net.HttpListenerException] {
+    continue
   } catch {
-    if ($_.Exception.Message -match "access is denied|failed to listen|actively refused|cannot access") {
-      continue
-    }
     throw
   }
 }
