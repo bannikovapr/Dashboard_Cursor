@@ -3,164 +3,270 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Маркетинговый дашборд</title>
-
+    <title>Стратегический дашборд ТОИР</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-
-    <link rel="stylesheet" href="css/styles.css" />
-
-    <script src="https://cdn.jsdelivr.net/npm/apexcharts@latest"></script>
+    <link rel="stylesheet" href="css/toir.css" />
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.54.1"></script>
   </head>
   <body>
-    <div class="top-progress" id="topProgress"></div>
-
-    <aside class="sidebar">
-      <div class="brand">
-        <img class="brandLogo" src="assets/desnol-logo.png" alt="Desnol" />
-      </div>
-      <nav class="nav">
-        <a class="navItem active" href="#kpi">KPI</a>
-        <a class="navItem" href="#traffic">Трафик</a>
-        <a class="navItem" href="#efficiency">Эффективность</a>
-        <a class="navItem" href="#funnel">Воронка</a>
-      </nav>
-    </aside>
-
-    <main class="main">
-      <div class="appLayout">
-        <div class="dash">
-          <header class="topbar">
-            <div>
-              <div class="eyebrow">Premium Analytics</div>
-              <h1>Маркетинговый дашборд</h1>
-              <div class="sub" id="periodLabel">Период: —</div>
-            </div>
-
-            <div class="filters">
-              <div class="filterBlock">
-                <div class="filterLabel">Период</div>
-                <div class="pills" id="periodPills">
-                  <button class="pill" data-range="1m">1 мес</button>
-                  <button class="pill" data-range="3m">3 мес</button>
-                  <button class="pill active" data-range="6m">6 мес</button>
-                  <button class="pill" data-range="all">Всё</button>
+    <div class="layout">
+      <div class="layout-main">
+        <header class="card" style="padding: 18px 20px; margin-bottom: 14px">
+          <div class="top-header">
+            <div class="brand-band">
+              <img
+                class="brand-logo-img"
+                src="assets/desnol-logo.png"
+                width="320"
+                height="88"
+                alt="Desnol"
+              />
+              <div class="brand-lockup">
+                <div class="titles">
+                  <h1>Стратегический дашборд ТОИР</h1>
                 </div>
               </div>
-
-              <div class="filterBlock">
-                <div class="filterLabel">Каналы</div>
-                <div class="toggles" id="channelToggles"></div>
+            </div>
+            <div class="filters-row">
+              <div class="filter-field">
+                <label for="panelPeriod">Период</label>
+                <select id="panelPeriod" aria-label="Период">
+                  <option value="all">Последние 12 месяцев</option>
+                  <option value="h1">1-е полугодие 2025</option>
+                  <option value="h2">2-е полугодие 2025</option>
+                </select>
+              </div>
+              <div class="filter-field">
+                <label for="panelClass">Класс оборудования</label>
+                <select id="panelClass" aria-label="Класс оборудования"></select>
               </div>
             </div>
-          </header>
+          </div>
 
-          <section id="kpi" class="section">
-            <div class="sectionHeader">
-              <h2>KPI</h2>
-              <div class="hint">Акцент: <span class="accent">#c8ff00</span></div>
-            </div>
+          <div class="tabs" role="tablist" aria-label="Разделы дашборда">
+            <button type="button" class="tab" data-tab="summary" aria-selected="true">Сводка</button>
+            <button type="button" class="tab" data-tab="costs">Затраты</button>
+            <button type="button" class="tab" data-tab="reliability">Надёжность</button>
+            <button type="button" class="tab" data-tab="equipment">Оборудование</button>
+          </div>
+        </header>
 
-            <div class="kpiGrid">
-              <div class="card kpi" style="--kpi-color: var(--accent)">
-                <div class="kpiTitle">Общий бюджет</div>
-                <div class="kpiValue mono" id="kpiBudget">—</div>
-                <div class="kpiMeta" id="kpiBudgetMeta">—</div>
-              </div>
-              <div class="card kpi" style="--kpi-color: #22c55e">
-                <div class="kpiTitle">Заявки</div>
-                <div class="kpiValue mono" id="kpiLeads">—</div>
-                <div class="kpiMeta" id="kpiLeadsMeta">—</div>
-              </div>
-              <div class="card kpi" style="--kpi-color: #3b82f6">
-                <div class="kpiTitle">Лучший ROAS</div>
-                <div class="kpiValue mono" id="kpiBestRoas">—</div>
-                <div class="kpiMeta" id="kpiBestRoasMeta">—</div>
-              </div>
-              <div class="card kpi" style="--kpi-color: #f59e0b">
-                <div class="kpiTitle">Лучший CPL</div>
-                <div class="kpiValue mono" id="kpiBestCpl">—</div>
-                <div class="kpiMeta" id="kpiBestCplMeta">—</div>
-              </div>
+        <div id="kpiBlock">
+          <div class="kpi-row">
+            <div class="card kpi-card">
+              <div class="label">Общие затраты ТОИР</div>
+              <div class="value" id="kpiTotal">—</div>
+              <div class="hint" id="kpiTotalHint">—</div>
             </div>
-          </section>
-
-          <section id="traffic" class="section">
-            <div class="sectionHeader">
-              <h2>Динамика трафика (6 месяцев)</h2>
-              <div class="hint">Area chart по переходам на сайт</div>
+            <div class="card kpi-card">
+              <div class="label">Доля топ-3 в затратах</div>
+              <div class="value" id="kpiTop3">—</div>
+              <div class="hint" id="kpiTop3Hint">—</div>
             </div>
-            <div class="card chartCard">
-              <div id="trafficChart" class="chart"></div>
+            <div class="card kpi-card">
+              <div class="label">Средняя стоимость на единицу</div>
+              <div class="value" id="kpiAvgUnit">—</div>
+              <div class="hint" id="kpiAvgHint">—</div>
             </div>
-          </section>
-
-          <section id="efficiency" class="section">
-            <div class="sectionHeader">
-              <h2>Эффективность каналов</h2>
-              <div class="hint">CPL и Scatter CPL vs ROAS</div>
+            <div class="card kpi-card">
+              <div class="label">Часы простоев (сумма)</div>
+              <div class="value" id="kpiDown">—</div>
+              <div class="hint" id="kpiDownHint">—</div>
             </div>
-
-            <div class="twoCol">
-              <div class="card chartCard">
-                <div class="chartTitle">CPL по каналам</div>
-                <div id="cplChart" class="chart"></div>
-              </div>
-              <div class="card chartCard">
-                <div class="chartTitle">CPL vs ROAS</div>
-                <div id="scatterChart" class="chart"></div>
-              </div>
+          </div>
+          <div class="kpi-row compact">
+            <div class="card kpi-card">
+              <div class="label">Количество отказов (в срезе)</div>
+              <div class="value" id="kpiFails">—</div>
+              <div class="hint" id="kpiFailsHint">—</div>
             </div>
-          </section>
-
-          <section id="funnel" class="section">
-            <div class="sectionHeader">
-              <h2>Воронка</h2>
-              <div class="hint">Показы → Клики → Заявки → Продажи</div>
+            <div class="card kpi-card">
+              <div class="label">КТГ (средний коэф.)</div>
+              <div class="value" id="kpiKtg">—</div>
+              <div class="hint" id="kpiKtgHint">—</div>
             </div>
-            <div class="card chartCard">
-              <div class="chartTitle">Общая воронка (по выбранным фильтрам)</div>
-              <div class="smallNote">
-                Продажи рассчитаны как 25% от заявок (если в источнике нет продаж).
-              </div>
-              <div id="funnelChart" class="chart"></div>
+            <div class="card kpi-card">
+              <div class="label">Отказов на единицу парка</div>
+              <div class="value" id="kpiPerEq">—</div>
+              <div class="hint" id="kpiPerEqHint">—</div>
             </div>
-          </section>
-
-          <footer class="footer">
-            <div>Данные: <span class="mono">data/marketing.json</span></div>
-          </footer>
+            <div class="card kpi-card">
+              <div class="label">MTBF (средний)</div>
+              <div class="value" id="kpiMtbf">—</div>
+              <div class="hint" id="kpiMtbfHint">—</div>
+            </div>
+          </div>
         </div>
 
-        <aside class="aiPanel" aria-label="AI Assistant">
-          <div class="aiHeader">
-            <div class="aiTitle">⚡ AI-Аналитик</div>
+        <div class="charts-area" style="margin-top: 18px">
+          <div id="panel-charts-summary" class="panel-charts" data-panel="summary">
+            <div class="card chart-card chart-hero">
+              <div class="chart-title-row">
+                <h2 class="chart-title chart-title--hero">Затраты ТОИР по месяцам</h2>
+              </div>
+              <div class="chart-sub" id="chartCostsSub">Итого по выгрузке (млн ₽)</div>
+              <div class="chart-box chart-box--hero" id="chartCosts"></div>
+            </div>
+            <div class="charts-grid charts-grid--sub">
+              <div class="card chart-card" id="wrapChartStructure">
+                <div class="chart-title">Структура оборудования по классам</div>
+                <div class="chart-sub" id="chartStructureSub">
+                  Доля единиц в выбранном срезе (агрегация по наименованию)
+                </div>
+                <div class="chart-box" id="chartStructure"></div>
+              </div>
+              <div class="card chart-card" id="wrapChartCauses">
+                <div class="chart-title">Причины отказов</div>
+                <div class="chart-sub" id="chartCausesSub">По количеству записей в периоде</div>
+                <div class="chart-box" id="chartCauses"></div>
+              </div>
+            </div>
           </div>
-          <div class="aiChat" id="aiChat" role="log" aria-live="polite"></div>
-          <div class="aiComposer">
-            <input id="aiInput" class="aiInput" type="text" placeholder="Спросите про каналы, бюджет, ROAS…" />
-            <button id="aiSend" class="aiSend" type="button">Отправить</button>
-          </div>
-        </aside>
-      </div>
-    </main>
 
-    <div class="loading" id="loading">
-      <div class="loaderCard">
-        <div class="loaderDot"></div>
-        <div>
-          <div class="loaderTitle">Загрузка данных</div>
-          <div class="loaderSub">Подготавливаем графики и KPI…</div>
+          <div id="panel-charts-costs" class="panel-charts" data-panel="costs" hidden>
+            <div class="charts-grid charts-grid--3">
+              <div class="card chart-card">
+                <div class="chart-title">Помесячные затраты</div>
+                <div class="chart-sub">Тот же срез, что на главном графике сводки</div>
+                <div class="chart-box" id="chartCostsTab"></div>
+              </div>
+              <div class="card chart-card">
+                <div class="chart-title">Топ-10 объектов по затратам</div>
+                <div class="chart-sub">Сумма по выбранному периоду и классу</div>
+                <div class="chart-box" id="chartTopCostEquip"></div>
+              </div>
+              <div class="card chart-card">
+                <div class="chart-title">Доля затрат по классам</div>
+                <div class="chart-sub">В текущем срезе фильтров</div>
+                <div class="chart-box" id="chartClassCostDonut"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="panel-charts-reliability" class="panel-charts" data-panel="reliability" hidden>
+            <div class="charts-grid charts-grid--3">
+              <div class="card chart-card">
+                <div class="chart-title">Причины отказов</div>
+                <div class="chart-sub" id="chartCausesRelSub">По количеству в выгрузке</div>
+                <div class="chart-box" id="chartCausesRel"></div>
+              </div>
+              <div class="card chart-card">
+                <div class="chart-title">Топ-10 по суммарным простоям</div>
+                <div class="chart-sub">Часы простоя по объектам в срезе</div>
+                <div class="chart-box" id="chartTopDowntime"></div>
+              </div>
+              <div class="card chart-card">
+                <div class="chart-title">Топ-10 по числу отказов</div>
+                <div class="chart-sub">В выбранном периоде и классе</div>
+                <div class="chart-box" id="chartTopDefects"></div>
+              </div>
+            </div>
+            <div class="charts-grid charts-grid--sub" style="margin-top: 14px">
+              <div class="card chart-card">
+                <div class="chart-title">КТГ по месяцам</div>
+                <div class="chart-sub" id="chartKtgTrendSub">Средний КТГ по объектам за период</div>
+                <div class="chart-box" id="chartKtgTrend"></div>
+              </div>
+              <div class="card chart-card">
+                <div class="chart-title">MTBF по объектам (топ)</div>
+                <div class="chart-sub" id="chartMtbfTopSub">Среднее время между отказами, ч</div>
+                <div class="chart-box" id="chartMtbfTop"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="panel-charts-equipment" class="panel-charts" data-panel="equipment" hidden>
+            <div class="charts-grid charts-grid--3">
+              <div class="card chart-card">
+                <div class="chart-title">Структура парка по классам</div>
+                <div class="chart-sub" id="chartStructureEqSub">Доля единиц, %</div>
+                <div class="chart-box" id="chartStructureEq"></div>
+              </div>
+              <div class="card chart-card">
+                <div class="chart-title">Процент износа</div>
+                <div class="chart-sub" id="chartWearSub" style="display: none"></div>
+                <div class="chart-box chart-box--image" id="chartWearImage"></div>
+              </div>
+              <div class="card chart-card">
+                <div class="chart-title">Затраты по классам</div>
+                <div class="chart-sub">млн ₽ в срезе</div>
+                <div class="chart-box" id="chartClassCostsBar"></div>
+              </div>
+            </div>
+          </div>
         </div>
+
+        <div class="tables-grid" id="tablesRow">
+          <div class="card table-card">
+            <div class="head">
+              <div>
+                <h3>Классы оборудования: затраты, простои, отказы, КТГ</h3>
+                <div class="table-sub">Главная стратегическая таблица</div>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table id="tblClasses">
+                <thead>
+                  <tr>
+                    <th>Класс</th>
+                    <th>Кол-во</th>
+                    <th>Затраты</th>
+                    <th>Простои</th>
+                    <th>Отказы</th>
+                    <th>КТГ</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card table-card">
+            <div class="head">
+              <div>
+                <h3>Топ проблемных объектов</h3>
+                <div class="table-sub">По сумме затрат и потерям надёжности (эвристика)</div>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table id="tblTop">
+                <thead>
+                  <tr>
+                    <th>Объект</th>
+                    <th>Затраты</th>
+                    <th>Простои</th>
+                    <th>Отказы</th>
+                    <th>КТГ</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <footer class="footer-note" id="footerSource">Загрузка…</footer>
       </div>
+
+      <aside class="card ai-panel layout-sidebar" aria-label="AI-ассистент">
+        <h2>AI-ассистент</h2>
+        <p class="ai-hint">
+          Ответы строятся только по загруженному JSON: факт → вывод → действие. Без обращения к внешним данным.
+        </p>
+        <div class="ai-log" id="aiLog"></div>
+        <div class="ai-input-row">
+          <textarea id="aiInput" placeholder="Например: какие три причины отказов чаще всего?" rows="3"></textarea>
+          <button type="button" class="btn-cta" id="aiSend">Спросить</button>
+        </div>
+      </aside>
     </div>
 
-    <script src="js/utils.js"></script>
-    <script src="js/charts.js"></script>
-    <script src="js/app.js"></script>
+    <script src="js/toir-utils.js"></script>
+    <script src="js/toir-charts.js"></script>
+    <script src="js/toir-app.js"></script>
   </body>
 </html>
