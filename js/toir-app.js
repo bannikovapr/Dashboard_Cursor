@@ -1,6 +1,12 @@
 (function () {
   const U = window.ToirUtils;
   const Charts = window.ToirCharts;
+  const runtimeLlm = {
+    apiKey: "",
+    model: "gpt-4.1-mini",
+    baseUrl: "https://api.openai.com/v1/chat/completions",
+    timeoutMs: 45000,
+  };
 
   function classifyClass(name) {
     if (/станок|токарн|фрезер|сверлил|шлиф|пресс|долб|заточ|расточ|протяж|электроэрозион|ленточнопиль|форматно|кромкооблицов|рейсмус|фуговальн|зубофрезерн|токарно-карусельн|продольно-фрезерн|листогибочн|гильотин/i.test(name))
@@ -271,6 +277,7 @@
     return escapeHtml(s).replace(/\n/g, " ");
   }
 
+
   function renderWearImage(data) {
     const box = document.getElementById("chartWearImage");
     if (!box) return;
@@ -372,20 +379,20 @@
       const cats = agg.map((a) => a.class);
       const vals = agg.map((a) => (100 * a.qty) / totalEq);
       const structPct = vals.map((v) => Math.round(v * 10) / 10);
-      Charts.renderStructureByClass(cats, structPct, "#chartStructure", 300);
-      Charts.renderStructureByClass(cats, structPct, "#chartStructureEq", 300);
+      Charts.renderStructureByClass(cats, structPct, "#chartStructure", 260);
+      Charts.renderStructureByClass(cats, structPct, "#chartStructureEq", 260);
 
       const cm = (data.charts.costsByMonth || []).filter((m) => monthSet.has(m.month));
       const costsMln = monthlyCostsSeriesMln(data, cm, cls);
       const monthLbl = cm.map((m) => shortMonthLabel(m.month));
-      Charts.renderCostsByMonth(monthLbl, costsMln, "#chartCosts", 360);
-      Charts.renderCostsByMonth(monthLbl, costsMln, "#chartCostsTab", 300);
+      Charts.renderCostsByMonth(monthLbl, costsMln, "#chartCosts", 320);
+      Charts.renderCostsByMonth(monthLbl, costsMln, "#chartCostsTab", 260);
 
       const fc = [...(data.charts.failure_causes || data.charts.failureCauses || [])].sort((a, b) => b.count - a.count);
       const fcLabels = fc.map((x) => x.cause);
       const fcCounts = fc.map((x) => x.count);
-      Charts.renderFailureCauses(fcLabels, fcCounts, "#chartCauses", 300);
-      Charts.renderFailureCauses(fcLabels, fcCounts, "#chartCausesRel", 300);
+      Charts.renderFailureCauses(fcLabels, fcCounts, "#chartCauses", 260);
+      Charts.renderFailureCauses(fcLabels, fcCounts, "#chartCausesRel", 260);
 
       const topCostRows = [...rows]
         .filter((r) => r.cost > 0)
@@ -395,7 +402,7 @@
         topCostRows.map((r) => r.name),
         topCostRows.map((r) => r.cost / 1e6),
         "#chartTopCostEquip",
-        320
+        280
       );
 
       const aggByCost = [...agg].sort((a, b) => b.costs - a.costs);
@@ -403,30 +410,9 @@
         aggByCost.map((a) => a.class),
         aggByCost.map((a) => a.costs),
         "#chartClassCostDonut",
-        320
+        280
       );
 
-      const topDown = [...rows]
-        .filter((r) => r.downtime > 0)
-        .sort((a, b) => b.downtime - a.downtime)
-        .slice(0, 10);
-      Charts.renderTopDowntime(
-        topDown.map((r) => r.name),
-        topDown.map((r) => r.downtime),
-        "#chartTopDowntime",
-        320
-      );
-
-      const topDef = [...rows]
-        .filter((r) => r.failures > 0)
-        .sort((a, b) => b.failures - a.failures)
-        .slice(0, 10);
-      Charts.renderTopDefects(
-        topDef.map((r) => r.name),
-        topDef.map((r) => r.failures),
-        "#chartTopDefects",
-        320
-      );
 
       const ktgMonthlyMap = new Map();
       rows.forEach((r) => {
@@ -448,7 +434,7 @@
         ktgMonths.map((m) => shortMonthLabel(m)),
         ktgAvgSeries,
         "#chartKtgTrend",
-        300
+        260
       );
 
       const mtbfTop = (data.charts.mtbfByEquipment || [])
@@ -458,7 +444,7 @@
         mtbfTop.map((x) => x.equipment),
         mtbfTop.map((x) => Number(x.mtbf_h) || 0),
         "#chartMtbfTop",
-        300
+        260
       );
       const mttrTop = (data.charts.mttrByEquipment || [])
         .filter((x) => cls === "__all__" || classifyClass(x.equipment) === cls)
@@ -467,7 +453,7 @@
         mttrTop.map((x) => x.equipment),
         mttrTop.map((x) => Number(x.mttr_h) || 0),
         "#chartMttrTop",
-        300
+        260
       );
       const mlRows = (data.charts.materialLaborByMonth || []).filter((m) => monthSet.has(m.month));
       Charts.renderMaterialLaborStacked(
@@ -475,21 +461,14 @@
         mlRows.map((m) => Number(m.material_h || m.material || 0)),
         mlRows.map((m) => Number(m.labor_h || m.labor || 0)),
         "#chartMaterialLabor",
-        300
+        260
       );
 
-      const aggByQty = [...agg].sort((a, b) => b.qty - a.qty);
-      Charts.renderClassQtyColumn(
-        aggByQty.map((a) => a.class),
-        aggByQty.map((a) => a.qty),
-        "#chartClassQty",
-        300
-      );
       Charts.renderClassCostsBar(
         aggByCost.map((a) => a.class),
         aggByCost.map((a) => a.costs / 1e6),
         "#chartClassCostsBar",
-        300
+        260
       );
 
       const monthShort = cm.map((m) => m.month);
@@ -871,10 +850,113 @@
     return noAnswer();
   }
 
+  function buildLlmContext(data) {
+    return {
+      meta: data?.meta || {},
+      kpis: data?.kpis || {},
+      charts: {
+        costsByMonth: (data?.charts?.costsByMonth || []).slice(0, 12),
+        failureCauses: (data?.charts?.failureCauses || data?.charts?.failure_causes || []).slice(0, 12),
+      },
+    };
+  }
+
+  function buildSystemPrompt() {
+    return [
+      "Ты аналитик ТОИР.",
+      "Отвечай строго по данным из JSON-контекста.",
+      "Формат ответа: JSON с ключами fact, conclusion, action.",
+      "Если данных недостаточно, верни fact: 'Сожалею, но пока не могу ответить на ваш вопрос.'",
+    ].join(" ");
+  }
+
+  function normalizeLlmResponse(rawText) {
+    const fallback = {
+      fact: "Сожалею, но пока не могу ответить на ваш вопрос.",
+      conclusion: "Не удалось получить корректный структурированный ответ от модели.",
+      action: "Уточните вопрос и повторите запрос.",
+    };
+    if (!rawText || typeof rawText !== "string") return fallback;
+    try {
+      const parsed = JSON.parse(rawText);
+      return {
+        fact: (parsed?.fact || fallback.fact).toString().trim(),
+        conclusion: (parsed?.conclusion || fallback.conclusion).toString().trim(),
+        action: (parsed?.action || fallback.action).toString().trim(),
+      };
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function hasValidStructuredAnswer(ans) {
+    return Boolean(
+      ans &&
+        typeof ans.fact === "string" &&
+        ans.fact.trim() &&
+        typeof ans.conclusion === "string" &&
+        ans.conclusion.trim() &&
+        typeof ans.action === "string" &&
+        ans.action.trim()
+    );
+  }
+
+  function setRuntimeApiKey(value) {
+    runtimeLlm.apiKey = (value || "").trim();
+    return Boolean(runtimeLlm.apiKey);
+  }
+
+  async function askCloudLlm(question, data) {
+    const localFallback = () => aiAnswer(question, data);
+    if (!runtimeLlm.apiKey) return localFallback();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), runtimeLlm.timeoutMs);
+    try {
+      const res = await fetch(runtimeLlm.baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${runtimeLlm.apiKey}`,
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: runtimeLlm.model,
+          temperature: 0.2,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: buildSystemPrompt() },
+            {
+              role: "user",
+              content: JSON.stringify({
+                question,
+                context: buildLlmContext(data),
+              }),
+            },
+          ],
+        }),
+      });
+      if (!res.ok) {
+        return localFallback();
+      }
+      const json = await res.json();
+      const rawContent = json?.choices?.[0]?.message?.content || "";
+      const modelAnswer = normalizeLlmResponse(rawContent);
+      if (!hasValidStructuredAnswer(modelAnswer)) return localFallback();
+      return modelAnswer;
+    } catch (_) {
+      return localFallback();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   function wireAi(data) {
     const log = document.getElementById("aiLog");
     const input = document.getElementById("aiInput");
     const btn = document.getElementById("aiSend");
+    const keyInput = document.getElementById("aiApiKey");
+    const keyApply = document.getElementById("aiApiApply");
+    const keyState = document.getElementById("aiApiState");
 
     function pushBubble(text, ai) {
       const div = document.createElement("div");
@@ -882,23 +964,41 @@
       div.innerHTML = text;
       log.appendChild(div);
       log.scrollTop = log.scrollHeight;
+      return div;
     }
 
-    const submitQuestion = () => {
+    const submitQuestion = async () => {
       const q = (input?.value || "").trim();
       if (!q) return;
       pushBubble(escapeHtml(q), false);
-      const { fact, conclusion, action } = aiAnswer(q, data);
-      pushBubble(
+      input.value = "";
+      const pending = pushBubble('<div class="block-title">Ответ</div>Думаю...', true);
+      const { fact, conclusion, action } = await askCloudLlm(q, data);
+      pending.innerHTML =
         `<div class="block-title">Факт</div>${escapeHtml(fact)}` +
           `<div class="block-title" style="margin-top:8px">Вывод</div>${escapeHtml(conclusion)}` +
-          `<div class="block-title" style="margin-top:8px">Действие</div>${escapeHtml(action)}`,
-        true
-      );
-      input.value = "";
+          `<div class="block-title" style="margin-top:8px">Действие</div>${escapeHtml(action)}`;
+      log.scrollTop = log.scrollHeight;
+    };
+
+    const applyKey = () => {
+      const ok = setRuntimeApiKey(keyInput?.value || "");
+      if (keyState) {
+        keyState.textContent = ok
+          ? "Ключ применен (только в памяти текущей страницы, после обновления будет очищен)"
+          : "Ключ не задан";
+      }
+      if (keyInput) keyInput.value = "";
     };
 
     btn?.addEventListener("click", submitQuestion);
+    keyApply?.addEventListener("click", applyKey);
+    keyInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        applyKey();
+      }
+    });
     input?.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();

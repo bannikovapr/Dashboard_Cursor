@@ -15,11 +15,6 @@
     "#fbbf24", // yellow
   ];
 
-  const greensCycle = (n) => {
-    const pal = typeof U.getChartGreenPalette === "function" ? U.getChartGreenPalette() : [chartBarColor()];
-    return Array.from({ length: n }, (_, i) => pal[i % pal.length]);
-  };
-
   const apexBySelector = {};
 
   function dispose(sel) {
@@ -71,6 +66,7 @@
     el.innerHTML = "";
     const opts = {
       ...chartLayout(height, "bar"),
+      grid: { padding: { left: 8, right: 0 } },
       plotOptions: { bar: { horizontal: true, barHeight: "65%", borderRadius: 4 } },
       series: [{ name: "Доля, %", data: values }],
       colors: [chartBarColor()],
@@ -80,7 +76,7 @@
         tickAmount: 5,
         labels: { formatter: (v) => `${v}%` },
       },
-      yaxis: { labels: { maxWidth: 200 } },
+      yaxis: { labels: { maxWidth: 200, style: { fontSize: "13px" } } },
     };
     apexBySelector[targetSel] = new ApexCharts(el, opts);
     apexBySelector[targetSel].render();
@@ -130,6 +126,7 @@
     const cat = targetSel === "#chartCausesRel" ? categories.map((c) => shortenLabel(c, 36)) : categories;
     const opts = {
       ...chartLayout(height, "bar"),
+      grid: { padding: { left: 24, right: 0 } },
       plotOptions: {
         bar: {
           horizontal: true,
@@ -141,7 +138,7 @@
       colors: [chartBarColor()],
       legend: { show: false },
       xaxis: targetSel === "#chartCausesRel" ? { categories: cat, labels: { style: { fontSize: "11px" } } } : { categories: cat },
-      yaxis: { labels: { maxWidth: targetSel === "#chartCausesRel" ? 200 : 220 } },
+      yaxis: { labels: { maxWidth: targetSel === "#chartCausesRel" ? 200 : 220, style: { fontSize: "13px" } } },
       tooltip: { y: { formatter: (val) => `${val} отказов` } },
     };
     apexBySelector[targetSel] = new ApexCharts(el, opts);
@@ -162,11 +159,12 @@
     const cat = names.map((n) => shortenLabel(n, 40));
     const opts = {
       ...chartLayout(height, "bar"),
+      grid: { padding: { left: 24, right: 0 } },
       plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3 } },
       series: [{ name: "млн ₽", data: costsMln }],
       colors: [chartBarColor()],
       xaxis: { categories: cat },
-      yaxis: { labels: { maxWidth: 200 } },
+      yaxis: { labels: { maxWidth: 200, style: { fontSize: "13px" } } },
       dataLabels: {
         enabled: true,
         formatter: (v) => `${Number(v).toFixed(2)}`,
@@ -230,12 +228,13 @@
     const cat = names.map((n) => shortenLabel(n, 40));
     const opts = {
       ...chartLayout(height, "bar"),
+      grid: { padding: { left: 24, right: 0 } },
       plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3 } },
       series: [{ name: "Часы", data: hours }],
       colors: [chartBarColor()],
       legend: { show: false },
       xaxis: { categories: cat },
-      yaxis: { labels: { maxWidth: 200 } },
+      yaxis: { labels: { maxWidth: 200, style: { fontSize: "13px" } } },
       tooltip: { y: { formatter: (v) => `${Math.round(v)} ч` } },
     };
     apexBySelector[targetSel] = new ApexCharts(el, opts);
@@ -255,12 +254,13 @@
     const cat = names.map((n) => shortenLabel(n, 40));
     const opts = {
       ...chartLayout(height, "bar"),
+      grid: { padding: { left: 24, right: 0 } },
       plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3 } },
       series: [{ name: "Отказов", data: counts }],
       colors: [chartBarColor()],
       legend: { show: false },
       xaxis: { categories: cat },
-      yaxis: { labels: { maxWidth: 200 } },
+      yaxis: { labels: { maxWidth: 200, style: { fontSize: "13px" } } },
       tooltip: { y: { formatter: (v) => `${v} шт.` } },
     };
     apexBySelector[targetSel] = new ApexCharts(el, opts);
@@ -306,7 +306,11 @@
       series: [{ name: "млн ₽", data: costsMln }],
       colors: [chartBarColor()],
       xaxis: { categories: classes.map((c) => shortenLabel(c, 22)), labels: { rotate: -35 } },
-      yaxis: { title: { text: "Млн ₽" } },
+      yaxis: {
+        title: { text: "Млн ₽" },
+        labels: { formatter: (v) => Number(v).toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) },
+      },
+      grid: { padding: { left: 6, right: 0 } },
       tooltip: {
         y: {
           formatter: (val) =>
@@ -362,11 +366,12 @@
     const cat = names.map((n) => shortenLabel(n, 38));
     const opts = {
       ...chartLayout(height, "bar"),
+      grid: { padding: { left: 24, right: 0 } },
       plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3 } },
       series: [{ name: "СННО, ч", data: hours }],
       colors: [chartBarColor()],
       xaxis: { categories: cat },
-      yaxis: { labels: { maxWidth: 220 } },
+      yaxis: { labels: { maxWidth: 220, style: { fontSize: "13px" } } },
       tooltip: { y: { formatter: (v) => `${Math.round(v).toLocaleString("ru-RU")} ч` } },
     };
     apexBySelector[targetSel] = new ApexCharts(el, opts);
@@ -386,11 +391,12 @@
     const cat = names.map((n) => shortenLabel(n, 38));
     const opts = {
       ...chartLayout(height, "bar"),
+      grid: { padding: { left: 24, right: 0 } },
       plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3 } },
       series: [{ name: "СВВ, ч", data: hours }],
       colors: [chartBarColor()],
       xaxis: { categories: cat },
-      yaxis: { labels: { maxWidth: 220 } },
+      yaxis: { labels: { maxWidth: 220, style: { fontSize: "13px" } } },
       tooltip: { y: { formatter: (v) => `${Math.round(v).toLocaleString("ru-RU")} ч` } },
     };
     apexBySelector[targetSel] = new ApexCharts(el, opts);

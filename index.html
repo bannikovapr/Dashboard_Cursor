@@ -260,6 +260,16 @@
       <aside class="card ai-panel layout-sidebar" aria-label="AI-ассистент">
         <h2>AI-ассистент</h2>
         <p class="ai-desc">Этот блок анализирует данные дашборда и отвечает по формату факт → вывод → действие.</p>
+        <div class="ai-key-row">
+          <input
+            id="aiApiKey"
+            type="password"
+            autocomplete="off"
+            placeholder="Введите API-ключ модели (хранится только до обновления страницы)"
+          />
+          <button type="button" class="btn-cta" id="aiApiApply">Применить ключ</button>
+          <div class="ai-key-state" id="aiApiState">Ключ не задан</div>
+        </div>
         <div class="ai-log" id="aiLog"></div>
         <div class="ai-input-row">
           <textarea id="aiInput" placeholder='Задайте вопрос, например: "Какой общий объем затрат?"' rows="3"></textarea>

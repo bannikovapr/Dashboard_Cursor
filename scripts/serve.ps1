@@ -23,6 +23,21 @@ function Get-ContentType([string]$path) {
   }
 }
 
+function Resolve-SafePath([string]$requestPath) {
+  if ([string]::IsNullOrWhiteSpace($requestPath)) { $requestPath = "index.html" }
+  if ($requestPath.Contains("`0")) { return $null }
+  $sanitized = $requestPath.TrimStart("/") -replace "/", "\"
+  if ($sanitized.StartsWith("\")) { return $null }
+  if ($sanitized -match "^\w:") { return $null }
+  if ($sanitized.Split("\") -contains "..") { return $null }
+
+  $combined = Join-Path $root $sanitized
+  $full = [IO.Path]::GetFullPath($combined)
+  $rootFull = [IO.Path]::GetFullPath((Join-Path $root "."))
+  if (-not $full.StartsWith($rootFull, [System.StringComparison]::OrdinalIgnoreCase)) { return $null }
+  return $full
+}
+
 function Start-StaticServer([int]$p) {
   $listener = New-Object System.Net.HttpListener
   $prefix = "http://localhost:$p/"
@@ -41,10 +56,16 @@ function Start-StaticServer([int]$p) {
     while ($listener.IsListening) {
       $ctx = $listener.GetContext()
       try {
-        $reqPath = $ctx.Request.Url.AbsolutePath.TrimStart("/")
-        if ([string]::IsNullOrWhiteSpace($reqPath)) { $reqPath = "index.html" }
-        $reqPath = $reqPath -replace "/", "\"
-        $filePath = Join-Path $root $reqPath
+        $absolutePath = $ctx.Request.Url.AbsolutePath
+        $filePath = Resolve-SafePath $absolutePath
+        if ($null -eq $filePath) {
+          $ctx.Response.StatusCode = 400
+          $bytes = [Text.Encoding]::UTF8.GetBytes("Bad request")
+          $ctx.Response.ContentType = "text/plain; charset=utf-8"
+          $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+          $ctx.Response.OutputStream.Close()
+          continue
+        }
 
         if (-not (Test-Path -LiteralPath $filePath -PathType Leaf)) {
           $ctx.Response.StatusCode = 404
@@ -57,6 +78,7 @@ function Start-StaticServer([int]$p) {
 
         $ctx.Response.StatusCode = 200
         $ctx.Response.ContentType = (Get-ContentType $filePath)
+        $ctx.Response.ContentEncoding = [Text.Encoding]::UTF8
         $bytes = [IO.File]::ReadAllBytes($filePath)
         $ctx.Response.ContentLength64 = $bytes.Length
         $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
