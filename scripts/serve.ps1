@@ -24,7 +24,8 @@ function Get-ContentType([string]$path) {
 }
 
 function Resolve-SafePath([string]$requestPath) {
-  if ([string]::IsNullOrWhiteSpace($requestPath)) { $requestPath = "index.html" }
+  # Treat "/" and empty as index.html
+  if ([string]::IsNullOrWhiteSpace($requestPath) -or $requestPath -eq "/") { $requestPath = "/index.html" }
   if ($requestPath.Contains("`0")) { return $null }
   $sanitized = $requestPath.TrimStart("/") -replace "/", "\"
   if ($sanitized.StartsWith("\")) { return $null }
