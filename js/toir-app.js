@@ -1,10 +1,8 @@
-(function () {
+﻿(function () {
   const U = window.ToirUtils;
   const Charts = window.ToirCharts;
   const runtimeLlm = {
-    apiKey: "",
-    model: "gpt-4.1-mini",
-    baseUrl: "https://api.openai.com/v1/chat/completions",
+    baseUrl: window.TOIR_API_URL || "http://localhost:8787/api/chat",
     timeoutMs: 45000,
   };
 
@@ -556,6 +554,55 @@
     applyTab("summary");
   }
 
+  function detectIntentFromQuestion(question) {
+    const ql = String(question || "").toLowerCase();
+    const hasKtgToken = /ктг|готовност/i.test(ql);
+    const reliabilityCombo =
+      (/надёжност|надежност|снно|свв|mtbf|mttr|наработк|восстанов|простой/i.test(ql) || hasKtgToken) &&
+      (/обзор|кратк|в целом|состояни|парк|дашборд|оцен|общ/i.test(ql));
+
+    if (/прогноз|предска|forecast/i.test(ql)) return "forecast";
+    if (/что делать|что спросить|рекоменд|действ/i.test(ql)) return "recommendation";
+    if (reliabilityCombo) return "overview_reliability";
+    if (/кратк|обзор|проанализ|весь дашборд|всего дашборд|в целом|что важного/i.test(ql)) return "dashboard_overview";
+    if (/почему.*затрат|затрат.*почему|выросл.*затрат|снизил.*затрат/i.test(ql)) return "why_costs_changed";
+    if (/почему.*отказ|отказ.*почему|выросл.*отказ|снизил.*отказ/i.test(ql)) return "why_failures_changed";
+    if (
+      /сравн|vs|против/i.test(ql) &&
+      /месяц|январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр/.test(ql)
+    )
+      return "compare_costs_by_month";
+    if (/материал|трудозатрат|труд.*материал|структур.*работ/i.test(ql)) return "material_labor_structure";
+    if (/доля.*затрат.*класс|затрат.*по класс|структур.*затрат.*класс/i.test(ql)) return "class_cost_structure";
+    if (hasKtgToken && /снно|mtbf|наработк/i.test(ql) && /причин|причины|отказов/i.test(ql)) return "reliability_combo_qa";
+    if (/mtbf|снно|наработк/i.test(ql)) return "mtbf_by_equipment";
+    if (/mttr|свв|восстанов/i.test(ql)) return "mttr_by_equipment";
+    if (hasKtgToken) return "ktg_by_equipment";
+    if (/топ.*затрат|лидер.*затрат|сам.*дорог|больше всего.*затрат|затрат.*оборуд/i.test(ql)) return "top_cost_equipment";
+    if (/причин|отказ|дефект/i.test(ql)) return "top_failure_causes";
+    if (/месяц|динам|тренд|пик/i.test(ql)) return "trend_costs_by_month";
+    if (/сколько|общ.*затрат|дефектов|оборудовани/i.test(ql)) return "kpi_fact";
+    if (/структур|класс|парк/.test(ql)) return "equipment_cost_detail";
+    return "unsupported";
+  }
+
+  function topEquipmentCosts(equipmentCosts, limit = 5) {
+    return Object.entries(equipmentCosts || {})
+      .map(([name, info]) => ({ name, total: Number(info?.total || 0) }))
+      .filter((r) => r.total > 0)
+      .sort((x, y) => y.total - x.total)
+      .slice(0, limit);
+  }
+
+  function classCostSummary(equipmentCosts) {
+    const rows = Object.entries(equipmentCosts || {})
+      .map(([name, info]) => ({ name, className: classifyClass(name), total: Number(info?.total || 0) }))
+      .filter((r) => r.total > 0);
+    const byClass = new Map();
+    for (const r of rows) byClass.set(r.className, (byClass.get(r.className) || 0) + r.total);
+    return [...byClass.entries()].map(([cls, val]) => ({ class: cls, total: val }));
+  }
+
   function aiAnswer(q, data) {
     const ql = q.toLowerCase();
     const a = data.analysis || {};
@@ -574,46 +621,6 @@
         action: "Уточните метрику и срез (например: месяц, класс оборудования, объект).",
       };
     };
-
-    function detectIntent() {
-      const flags = {
-        forecast: /прогноз|предска|forecast/i.test(ql),
-        recommendation: /что делать|что спросить|рекоменд|действ/i.test(ql),
-        overview: /кратк|обзор|проанализ|весь дашборд|всего дашборд|в целом|что важного/i.test(ql),
-        whyCosts: /почему.*затрат|затрат.*почему|выросл.*затрат|снизил.*затрат/i.test(ql),
-        whyFailures: /почему.*отказ|отказ.*почему|выросл.*отказ|снизил.*отказ/i.test(ql),
-        compareMonths:
-          /сравн|vs|против/i.test(ql) &&
-          /месяц|январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр/.test(ql),
-        materialLabor: /материал|трудозатрат|труд.*материал|структур.*работ/i.test(ql),
-        classCost: /доля.*затрат.*класс|затрат.*по класс|структур.*затрат.*класс/i.test(ql),
-        failureCauses: /причин|отказ|дефект/i.test(ql),
-        topCost: /топ.*затрат|лидер.*затрат|сам.*дорог|больше всего.*затрат|затрат.*оборуд/i.test(ql),
-        mttr: /mttr|свв|восстанов/i.test(ql),
-        mtbf: /mtbf|снно|наработк/i.test(ql),
-        ktg: /ктг|готовност/i.test(ql),
-        trend: /месяц|динам|тренд|пик/i.test(ql),
-        kpi: /сколько|общ.*затрат|дефектов|оборудовани/i.test(ql),
-        equipmentDetail: /структур|класс|парк/.test(ql),
-      };
-      if (flags.forecast) return "forecast";
-      if (flags.recommendation) return "recommendation";
-      if (flags.overview) return "dashboard_overview";
-      if (flags.whyCosts) return "why_costs_changed";
-      if (flags.whyFailures) return "why_failures_changed";
-      if (flags.compareMonths) return "compare_costs_by_month";
-      if (flags.materialLabor) return "material_labor_structure";
-      if (flags.classCost) return "class_cost_structure";
-      if (flags.failureCauses) return "top_failure_causes";
-      if (flags.mttr) return "mttr_by_equipment";
-      if (flags.mtbf) return "mtbf_by_equipment";
-      if (flags.topCost) return "top_cost_equipment";
-      if (flags.ktg) return "ktg_by_equipment";
-      if (flags.trend) return "trend_costs_by_month";
-      if (flags.kpi) return "kpi_fact";
-      if (flags.equipmentDetail) return "equipment_cost_detail";
-      return "unsupported";
-    }
 
     function extractMonthsFromQuestion(series) {
       const monthAliases = {
@@ -640,19 +647,85 @@
       });
     }
 
-    function topCostEquipment(limit = 3) {
-      const rows = Object.entries(equipmentCosts)
-        .map(([name, info]) => ({
-          name,
-          total: Number(info?.total || 0),
-        }))
-        .filter((r) => r.total > 0)
-        .sort((x, y) => y.total - x.total)
-        .slice(0, limit);
-      return rows;
+    const intent = detectIntentFromQuestion(q);
+
+    if (intent === "reliability_combo_qa") {
+      const ktgVals = Object.entries(ktgMap)
+        .map(([name, x]) => ({ name, val: Number(x?.avg_ktg) || 0 }))
+        .filter((x) => x.val > 0)
+        .sort((a, b) => b.val - a.val)
+        .slice(0, 3);
+      const mtbfTop = [...mtbfRows]
+        .sort((x, y) => (Number(y.mtbf_h) || 0) - (Number(x.mtbf_h) || 0))
+        .slice(0, 3);
+      const causesTop = [...failureCauses].slice(0, 3);
+      if (!ktgVals.length && !mtbfTop.length && !causesTop.length) {
+        return noAnswer("В выгрузке нет данных по КТГ, СННО и причинам отказов для совместного ответа.");
+      }
+      const factChunks = [];
+      if (ktgVals.length) {
+        factChunks.push(
+          `КТГ (топ-3): ${ktgVals.map((x) => `${x.name} — ${x.val.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`).join("; ")}`
+        );
+      }
+      if (mtbfTop.length) {
+        factChunks.push(
+          `СННО (топ-3, ч): ${mtbfTop.map((x) => `${x.equipment}: ${Math.round(Number(x.mtbf_h) || 0).toLocaleString("ru-RU")}`).join("; ")}`
+        );
+      }
+      if (causesTop.length) {
+        factChunks.push(`Частые причины отказов (топ-3): ${causesTop.map((x, i) => `${i + 1}) ${x.cause} — ${x.count}`).join("; ")}`);
+      }
+      return {
+        fact: factChunks.join(" | "),
+        conclusion:
+          "По выгрузке видно расслоение готовности и наработки по объектам; частые причины отказов задают зоны, где стоит сверить регламенты и ресурсы.",
+        action:
+          "Сопоставьте объекты с более низким КТГ и меньшей СННО с перечнем причин и запланируйте точечные проверки по топ-3 причинам.",
+      };
     }
 
-    const intent = detectIntent();
+    if (intent === "overview_reliability") {
+      const total = Number(data.kpis?.total_cost);
+      const defects = Number(data.kpis?.total_defects);
+      const eqCount = Number(data.kpis?.equipment_count);
+      const ktgVals = Object.values(ktgMap).map((k) => Number(k?.avg_ktg) || 0).filter((v) => v > 0);
+      const ktgAvg = ktgVals.length ? ktgVals.reduce((a, b) => a + b, 0) / ktgVals.length : null;
+      let mtbfAvg = null;
+      if (mtbfRows.length) {
+        const nums = mtbfRows.map((x) => Number(x.mtbf_h) || 0).filter((v) => v > 0);
+        if (nums.length) mtbfAvg = nums.reduce((a, b) => a + b, 0) / nums.length;
+      }
+      let mttrAvg = null;
+      if (mttrRows.length) {
+        const nums = mttrRows.map((x) => Number(x.mttr_h) || 0).filter((v) => v > 0);
+        if (nums.length) mttrAvg = nums.reduce((a, b) => a + b, 0) / nums.length;
+      }
+      const hasReliabilitySlice =
+        Number.isFinite(defects) ||
+        Number.isFinite(eqCount) ||
+        mtbfAvg != null ||
+        mttrAvg != null ||
+        ktgAvg != null ||
+        Number.isFinite(total);
+      if (!hasReliabilitySlice) {
+        return noAnswer("В выгрузке недостаточно показателей надёжности для обзора.");
+      }
+      const parts = [];
+      if (Number.isFinite(defects)) parts.push(`отказов: ${U.formatCount(defects)}`);
+      if (Number.isFinite(eqCount)) parts.push(`единиц парка: ${U.formatCount(eqCount)}`);
+      if (mtbfAvg != null) parts.push(`средняя СННО: ${Math.round(mtbfAvg).toLocaleString("ru-RU")} ч`);
+      if (mttrAvg != null) parts.push(`средняя СВВ: ${Math.round(mttrAvg).toLocaleString("ru-RU")} ч`);
+      if (ktgAvg != null) parts.push(`средний КТГ: ${ktgAvg.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`);
+      const tail = Number.isFinite(total) ? `Затраты: ${U.formatMoneyMln(total)}` : "";
+      const head = parts.length ? `${parts.join("; ")}.` : "";
+      const fact = [head, tail].filter(Boolean).join(" ").trim();
+      return {
+        fact,
+        conclusion: "Сводка по ключевым метрикам надёжности и доступности парка.",
+        action: "Для узких мест разберите объекты с худшими СННО, КТГ и наибольшей СВВ.",
+      };
+    }
 
     if (intent === "forecast") {
       return noAnswer("Для прогноза не задан проверяемый метод расчёта.");
@@ -668,7 +741,7 @@
       return {
         fact: `Затраты: ${U.formatMoneyMln(total)}; отказов: ${U.formatCount(defects)}; единиц парка: ${U.formatCount(eqCount)}.`,
         conclusion: "Это базовый срез текущего состояния затрат и надежности парка.",
-        action: "Уточните, какую метрику разобрать глубже: затраты, отказы, КТГ, MTBF или динамику по месяцам.",
+        action: "Уточните, какую метрику разобрать глубже: затраты, отказы, КТГ, СННО или динамику по месяцам.",
       };
     }
 
@@ -697,7 +770,7 @@
     }
 
     if (intent === "top_cost_equipment") {
-      const top = topCostEquipment(3);
+      const top = topEquipmentCosts(equipmentCosts, 3);
       if (!top.length) return noAnswer("В выгрузке нет детализации затрат по объектам.");
       return {
         fact: top.map((x, i) => `${i + 1}) ${x.name} — ${U.formatMoneyMln(x.total)}`).join("; "),
@@ -707,7 +780,7 @@
     }
 
     if (intent === "equipment_cost_detail") {
-      const top = topCostEquipment(1)[0];
+      const top = topEquipmentCosts(equipmentCosts, 1)[0];
       if (!top) return noAnswer("Нет данных по затратам оборудования.");
       return {
         fact: `Наибольшие затраты у объекта ${top.name}: ${U.formatMoneyMln(top.total)}.`,
@@ -780,8 +853,16 @@
         .sort((a1, b1) => b1.val - a1.val);
       if (!vals.length) return noAnswer("В выгрузке нет КТГ по оборудованию.");
       const top = vals.slice(0, 3);
+      const risk85 = vals.filter((x) => x.val < 85);
+      const risk90 = vals.filter((x) => x.val < 90);
+      const riskNote =
+        risk85.length > 0
+          ? ` Ниже 85%: ${risk85.length} объект(ов) — зона повышенного риска.`
+          : risk90.length > 0
+            ? ` Ниже 90%: ${risk90.length} объект(ов) — требуют внимания.`
+            : "";
       return {
-        fact: top.map((x) => `${x.name}: ${x.val.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`).join("; "),
+        fact: `${top.map((x) => `${x.name}: ${x.val.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`).join("; ")}.${riskNote}`.trim(),
         conclusion: "КТГ отражает техническую готовность оборудования к работе.",
         action: "Сфокусируйтесь на объектах с минимальным КТГ и разберите причины недоступности.",
       };
@@ -838,7 +919,7 @@
 
     if (intent === "recommendation") {
       const topCauses = [...failureCauses].slice(0, 2);
-      const topCost = topCostEquipment(2);
+      const topCost = topEquipmentCosts(equipmentCosts, 2);
       if (!topCauses.length && !topCost.length) return noAnswer("Недостаточно данных для обоснованной рекомендации.");
       return {
         fact: `${topCauses.length ? `Частые причины: ${topCauses.map((x) => `${x.cause} (${x.count})`).join("; ")}` : "Причины отказов не агрегированы"}${topCost.length ? `; лидеры по затратам: ${topCost.map((x) => `${x.name} (${U.formatMoneyMln(x.total)})`).join("; ")}` : ""}.`,
@@ -848,45 +929,6 @@
     }
 
     return noAnswer();
-  }
-
-  function buildLlmContext(data) {
-    return {
-      meta: data?.meta || {},
-      kpis: data?.kpis || {},
-      charts: {
-        costsByMonth: (data?.charts?.costsByMonth || []).slice(0, 12),
-        failureCauses: (data?.charts?.failureCauses || data?.charts?.failure_causes || []).slice(0, 12),
-      },
-    };
-  }
-
-  function buildSystemPrompt() {
-    return [
-      "Ты аналитик ТОИР.",
-      "Отвечай строго по данным из JSON-контекста.",
-      "Формат ответа: JSON с ключами fact, conclusion, action.",
-      "Если данных недостаточно, верни fact: 'Сожалею, но пока не могу ответить на ваш вопрос.'",
-    ].join(" ");
-  }
-
-  function normalizeLlmResponse(rawText) {
-    const fallback = {
-      fact: "Сожалею, но пока не могу ответить на ваш вопрос.",
-      conclusion: "Не удалось получить корректный структурированный ответ от модели.",
-      action: "Уточните вопрос и повторите запрос.",
-    };
-    if (!rawText || typeof rawText !== "string") return fallback;
-    try {
-      const parsed = JSON.parse(rawText);
-      return {
-        fact: (parsed?.fact || fallback.fact).toString().trim(),
-        conclusion: (parsed?.conclusion || fallback.conclusion).toString().trim(),
-        action: (parsed?.action || fallback.action).toString().trim(),
-      };
-    } catch (_) {
-      return fallback;
-    }
   }
 
   function hasValidStructuredAnswer(ans) {
@@ -901,62 +943,98 @@
     );
   }
 
-  function setRuntimeApiKey(value) {
-    runtimeLlm.apiKey = (value || "").trim();
-    return Boolean(runtimeLlm.apiKey);
+  function apiErrorAnswer(status, payload) {
+    const code = payload?.errorCode || "";
+    const msg = String(payload?.message || "").trim();
+    const fact = "Сожалею, но пока не могу ответить на ваш вопрос.";
+    if (code === "provider_not_configured") {
+      return {
+        fact,
+        conclusion: "На сервере не задан ключ OpenRouter (переменная OPENROUTER_API_KEY в файле .env в корне проекта).",
+        action: "Создайте .env по образцу .env.example, укажите ключ, перезапустите окно с API и обновите страницу дашборда.",
+      };
+    }
+    if (code === "rate_limited") {
+      return {
+        fact,
+        conclusion: "Провайдер модели вернул ограничение по частоте запросов (429).",
+        action: "Подождите минуту и повторите вопрос или проверьте лимиты/тариф в кабинете OpenRouter.",
+      };
+    }
+    if (status === 400 && msg) {
+      return {
+        fact,
+        conclusion: `Запрос к API отклонён: ${msg}`,
+        action: "Сократите или переформулируйте вопрос (максимум 4000 символов).",
+      };
+    }
+    return {
+      fact,
+      conclusion: `API вернул ошибку (${status || "—"})${msg ? `: ${msg}` : ""}.`,
+      action: "Проверьте консоль окна, где запущен node server/index.js, квоту ключа и повторите запрос.",
+    };
   }
 
   async function askCloudLlm(question, data) {
-    const localFallback = () => aiAnswer(question, data);
-    if (!runtimeLlm.apiKey) return localFallback();
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), runtimeLlm.timeoutMs);
-    try {
-      const res = await fetch(runtimeLlm.baseUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${runtimeLlm.apiKey}`,
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: runtimeLlm.model,
-          temperature: 0.2,
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: buildSystemPrompt() },
-            {
-              role: "user",
-              content: JSON.stringify({
-                question,
-                context: buildLlmContext(data),
-              }),
-            },
-          ],
-        }),
-      });
-      if (!res.ok) {
-        return localFallback();
+    const fullContext = data;
+    const body = JSON.stringify({
+      question,
+      context: fullContext,
+      contextExpanded: fullContext,
+    });
+    const attempts = 5;
+    const pauseMs = 600;
+
+    for (let i = 0; i < attempts; i += 1) {
+      if (i > 0) await new Promise((r) => setTimeout(r, pauseMs));
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), runtimeLlm.timeoutMs);
+      try {
+        const res = await fetch(runtimeLlm.baseUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          signal: controller.signal,
+          body,
+        });
+        const raw = await res.text();
+        let json = null;
+        try {
+          json = raw ? JSON.parse(raw) : null;
+        } catch (_) {
+          json = null;
+        }
+        if (!res.ok) {
+          const errCode = json?.errorCode || "";
+          if (errCode === "provider_not_configured" || errCode === "rate_limited" || res.status === 400) {
+            return apiErrorAnswer(res.status, json);
+          }
+          return aiAnswer(question, data);
+        }
+        const modelAnswer = {
+          fact: json?.fact,
+          conclusion: json?.conclusion,
+          action: json?.action,
+        };
+        if (!hasValidStructuredAnswer(modelAnswer)) {
+          return aiAnswer(question, data);
+        }
+        return modelAnswer;
+      } catch {
+        /* retry */
+      } finally {
+        clearTimeout(timer);
       }
-      const json = await res.json();
-      const rawContent = json?.choices?.[0]?.message?.content || "";
-      const modelAnswer = normalizeLlmResponse(rawContent);
-      if (!hasValidStructuredAnswer(modelAnswer)) return localFallback();
-      return modelAnswer;
-    } catch (_) {
-      return localFallback();
-    } finally {
-      clearTimeout(timer);
     }
+
+    return aiAnswer(question, data);
   }
 
   function wireAi(data) {
     const log = document.getElementById("aiLog");
     const input = document.getElementById("aiInput");
     const btn = document.getElementById("aiSend");
-    const keyInput = document.getElementById("aiApiKey");
-    const keyApply = document.getElementById("aiApiApply");
-    const keyState = document.getElementById("aiApiState");
 
     function pushBubble(text, ai) {
       const div = document.createElement("div");
@@ -981,24 +1059,7 @@
       log.scrollTop = log.scrollHeight;
     };
 
-    const applyKey = () => {
-      const ok = setRuntimeApiKey(keyInput?.value || "");
-      if (keyState) {
-        keyState.textContent = ok
-          ? "Ключ применен (только в памяти текущей страницы, после обновления будет очищен)"
-          : "Ключ не задан";
-      }
-      if (keyInput) keyInput.value = "";
-    };
-
     btn?.addEventListener("click", submitQuestion);
-    keyApply?.addEventListener("click", applyKey);
-    keyInput?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        applyKey();
-      }
-    });
     input?.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
