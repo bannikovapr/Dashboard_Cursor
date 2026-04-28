@@ -1,0 +1,43 @@
+name: Security Hygiene
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "**"
+
+jobs:
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Hygiene check
+        run: npm run hygiene:check
+
+      - name: Smoke agent DLP
+        run: npm run smoke:agent-dlp
+
+      - name: Smoke hardening
+        run: npm run smoke:hardening
+
+      - name: Smoke forecast
+        run: npm run smoke:forecast
+
+      - name: Smoke personnel
+        run: npm run smoke:personnel

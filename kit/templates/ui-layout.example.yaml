@@ -1,0 +1,107 @@
+# ui-layout.yaml
+#
+# Карта интерфейса дашборда: какие KPI в каком порядке, какие вкладки,
+# какие графики и таблицы на каждой вкладке. Агент по этому файлу
+# генерирует index.html/компоненты и биндинги к dashboard.json.
+#
+# Все id (kpi.id, series.id, chart.id, table.id) — это ссылки на:
+#   - kpis.<id> в dashboard.json для KPI;
+#   - charts.<id> в dashboard.json для графиков;
+#   - tables.<id> в dashboard.json для таблиц.
+
+version: "1.0"
+
+# Шапка.
+header:
+  show_logo: true
+  show_title: true
+  chips:                         # маленькие контекстные чипы под шапкой
+    - { id: period,     label: "Период",    bind: "meta.period" }
+    - { id: updated,    label: "Обновлено", bind: "meta.generated_at" }
+    - { id: row_count,  label: "Записей",   bind: "analysis.row_count" }
+
+# Фильтры. Биндятся к полям датасетов; агент подставит их в запросы.
+filters:
+  - id: period
+    label: "Период"
+    kind: "select"
+    options:
+      - { value: "all",  label: "Последние 12 месяцев" }
+      - { value: "h1",   label: "1-е полугодие" }
+      - { value: "h2",   label: "2-е полугодие" }
+    default: "all"
+
+  - id: segment
+    label: "Сегмент"
+    kind: "select"
+    # Опции берутся из датасета (не хардкод).
+    options_from: { dataset: "orders", field: "channel", add_all: true }
+    default: "__all__"
+
+# KPI-блок. Порядок карточек = порядок в списке.
+kpi_block:
+  columns_desktop: 4
+  columns_tablet: 2
+  columns_mobile: 1
+  cards:
+    - { ref: total_revenue }
+    - { ref: active_customers }
+    - { ref: avg_order_value }
+    - { ref: refund_rate }
+
+# Вкладки.
+tabs:
+
+  - id: summary
+    label: "Сводка"
+    charts:
+      - id: chartRevenueTrend
+        kind: "line"
+        title: "Динамика выручки"
+        bind: "charts.revenue_monthly"
+        x: "month"
+        y: "total"
+      - id: chartChannels
+        kind: "donut"
+        title: "Структура по каналам"
+        bind: "charts.orders_by_channel"
+        x: "channel"
+        y: "count"
+
+  - id: detail
+    label: "Детализация"
+    tables:
+      - id: tblTopCustomers
+        title: "Топ клиентов"
+        bind: "tables.top_customers"
+        columns:
+          - { field: "customer",    label: "Клиент" }
+          - { field: "orders",      label: "Заказов", align: "right" }
+          - { field: "revenue",     label: "Выручка", align: "right", format: "currency" }
+
+  - id: forecast
+    label: "Прогноз"
+    charts:
+      - id: chartRevenueForecast
+        kind: "line"
+        title: "Прогноз выручки"
+        # Прогнозные артефакты строит агент (forecast_metric), см. kit/playbook/06-forecast.md.
+        bind: "charts.revenue_forecast"
+        supports: ["actual", "forecast", "confidence_interval"]
+
+# Политика цветов графиков (см. brand.config -> palette.chart).
+chart_policy:
+  # Одноцветно, если легенда не несёт смысла (ranking, один показатель).
+  mono_by_default: true
+  # Multi-color когда у серии осмысленные категории (структура, доли).
+  use_categorical_for: ["donut", "pie", "stacked-bar", "multi-series-line"]
+
+# Адаптивные правила (общие).
+responsive:
+  hide_below: []                 # список id элементов, скрывать на узких экранах
+  table_scroll: "x"              # горизонтальный скролл внутри .table-wrap
+
+# Пустые состояния.
+empty_state:
+  text: "Нет данных"
+  subtext: "Попробуйте изменить фильтры или подгрузить свежий снимок."

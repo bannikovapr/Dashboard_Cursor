@@ -1,0 +1,119 @@
+# source-manifest.yaml
+#
+# Декларация ИСТОЧНИКОВ данных. Количество, формат и расположение — любые.
+# Агент по этому файлу генерирует скрипт нормализации, который собирает
+# единый dashboard.json (см. templates/dashboard.schema.json).
+#
+# Поддерживаемые kind: excel | csv | tsv | json | parquet | sqlite | postgres | mysql | api | gsheet
+# Для каждого источника: id (стабильный), путь/коннект, и секция mapping —
+# какие КАНОНИЧЕСКИЕ датасеты он даёт фронту/агенту.
+
+version: "1.0"
+
+# Общие настройки загрузки (необязательно).
+defaults:
+  encoding: "utf-8"
+  tz: "Europe/Moscow"
+  missing: "null"         # null | zero | skip
+  trim_strings: true
+
+# Датасеты, которые должен получить dashboard.json в результате.
+# Это "выходные контракты". Каждый источник ниже объявляет, куда он попадает.
+canonical_datasets:
+  - id: orders
+    fields: [order_id, customer_id, channel, status, amount, created_at]
+  - id: revenue_monthly
+    fields: [month, total]
+  - id: orders_by_channel
+    fields: [channel, count]
+
+# Сами источники. Добавляйте столько, сколько нужно — хоть один, хоть двадцать.
+sources:
+
+  # Пример 1. Excel-файл с несколькими листами.
+  - id: crm_orders_xlsx
+    kind: excel
+    path: "data/orders_2025.xlsx"
+    sheet: "orders"
+    header_row: 1
+    # Маппинг "как есть в файле" -> "как называется в каноничном датасете".
+    mapping:
+      - to: orders
+        columns:
+          order_id: "Номер заказа"
+          customer_id: "ID клиента"
+          channel: "Канал"
+          status: "Статус"
+          amount: "Сумма, USD"
+          created_at: "Дата создания"
+        # Необязательные трансформации:
+        transforms:
+          - { field: status, lowercase: true }
+          - { field: amount, to_number: true }
+
+  # Пример 2. CSV-выгрузка из BI.
+  - id: revenue_csv
+    kind: csv
+    path: "data/revenue_by_month.csv"
+    delimiter: ","
+    mapping:
+      - to: revenue_monthly
+        columns:
+          month: "period"
+          total: "revenue_usd"
+
+  # Пример 3. Подключение к БД.
+  - id: analytics_db
+    kind: postgres
+    dsn_env: "ANALYTICS_DSN"       # значение читается из переменной окружения
+    queries:
+      - to: orders_by_channel
+        sql: |
+          SELECT channel, COUNT(*) AS count
+          FROM orders
+          WHERE created_at >= NOW() - INTERVAL '12 months'
+          GROUP BY channel
+
+  # Пример 4. HTTP API.
+  - id: marketing_api
+    kind: api
+    base_url: "https://api.example.com/v1"
+    auth:
+      type: "bearer"
+      token_env: "MARKETING_TOKEN"
+    endpoints:
+      - to: orders_by_channel
+        path: "/stats/channels"
+        method: "GET"
+        # json_path выбирает массив из ответа
+        json_path: "$.data.channels"
+        mapping:
+          channel: "name"
+          count: "orders"
+
+# Производные датасеты (опционально).
+# Если какой-то каноничный датасет получается агрегацией из сырых источников
+# (напр. помесячная выручка из таблицы заказов) — декларируйте это здесь.
+# Агент добавит соответствующий шаг в скрипт нормализации.
+derived_datasets:
+  - id: revenue_monthly
+    from: orders
+    where: { status: "paid" }
+    group_by: { month: "month(created_at)" }
+    aggregate: { total: "sum(amount)" }
+
+  - id: orders_by_channel
+    from: orders
+    group_by: { channel: "channel" }
+    aggregate: { count: "count()" }
+
+# Валидация на этапе сборки (агент сгенерирует проверки).
+# Если какое-то требование не выполнено — сборка падает с понятным сообщением.
+validation:
+  required_datasets: [orders, revenue_monthly]
+  required_fields:
+    orders: [order_id, amount, created_at]
+    revenue_monthly: [month, total]
+  # Мин. количество строк для "валидного" датасета.
+  min_rows:
+    orders: 10

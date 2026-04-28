@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Анализ ТОиР-данных из Cursor_test2.xlsx
+Анализ ТОиР-данных из 7 отдельных отчетов Excel.
 Извлекает: затраты по объектам, причины отказов, КТГ, простои.
 Формирует data/toir.json.
 """
@@ -13,7 +13,6 @@ from pathlib import Path
 import openpyxl
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-XLSX = DATA_DIR / "Cursor_test2.xlsx"
 OUT = DATA_DIR / "toir.json"
 REPORT_SHEETS = [
     "Анализ отказов",
@@ -465,30 +464,25 @@ def extract_wear_report_image() -> str | None:
 
 def load_source_workbooks():
     """
-    Возвращает (sources, source_label):
+    Возвращает (sources, source_label).
     - sources: dict[str, Workbook], где ключ = имя листа/отчета
     - source_label: строка для meta.source
-    Приоритет: 7 отдельных файлов. Fallback: единый Cursor_test2.xlsx.
+    Ожидаются 7 отдельных файлов отчетов.
     """
     split_paths = {s: DATA_DIR / f"{s}.xlsx" for s in REPORT_SHEETS}
-    has_all_split = all(p.exists() for p in split_paths.values())
     sources = {}
-
-    if has_all_split:
-        for sheet, p in split_paths.items():
-            sources[sheet] = openpyxl.load_workbook(str(p), read_only=True, data_only=True)
-        src = "7 файлов отчетов (*.xlsx)"
-    else:
-        wb = openpyxl.load_workbook(str(XLSX), read_only=True, data_only=True)
-        for sheet in REPORT_SHEETS:
-            sources[sheet] = wb
-        src = "Cursor_test2.xlsx"
-    return sources, src, has_all_split
+    missing = [str(p.name) for p in split_paths.values() if not p.exists()]
+    if missing:
+        raise FileNotFoundError(f"Не найдены обязательные отчеты: {', '.join(missing)}")
+    for sheet, p in split_paths.items():
+        sources[sheet] = openpyxl.load_workbook(str(p), read_only=True, data_only=True)
+    src = "7 файлов отчетов (*.xlsx)"
+    return sources, src
 
 
 # ── MAIN ──
 def main():
-    sources, source_label, has_all_split = load_source_workbooks()
+    sources, source_label = load_source_workbooks()
 
     wb_costs = sources["Фактические затраты по ОР"]
     wb_fail = sources["Наработка на отказ"]
@@ -503,12 +497,8 @@ def main():
     material_labor = parse_material_labor_monthly(wb_analysis)
     wear_image = extract_wear_report_image()
 
-    if has_all_split:
-        for wb in sources.values():
-            wb.close()
-    else:
-        # Все ключи указывали на один и тот же wb.
-        next(iter(sources.values())).close()
+    for wb in sources.values():
+        wb.close()
 
     total_per_equip = {}
     for eq, months in equip_costs.items():

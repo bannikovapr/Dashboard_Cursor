@@ -9,6 +9,13 @@ const FALLBACK_MODEL = process.env.OPENROUTER_FALLBACK_MODEL || "qwen/qwen3-next
 const ROUTER_FALLBACK_MODEL = process.env.OPENROUTER_ROUTER_FALLBACK_MODEL || "openrouter/free";
 const REQUEST_TIMEOUT_MS = Number(process.env.OPENROUTER_TIMEOUT_MS || 45000);
 
+function parseBool(value, fallback) {
+  if (value == null) return fallback;
+  const v = String(value).trim().toLowerCase();
+  if (!v) return fallback;
+  return !["0", "false", "off", "no"].includes(v);
+}
+
 function cloneContextRedactPaths(ctx) {
   try {
     const o =
@@ -156,11 +163,11 @@ function buildSystemPrompt() {
     "Весь текст ответа только на русском языке.",
     "Строго запрещено упоминать в fact, conclusion и action: пути к файлам и каталогам, имена файлов, расширения, сервер, API, OpenRouter, JSON, ключи и имена полей данных, структуры БД, служебные идентификаторы. Формулируй нейтрально: «по данным дашборда», «на графике», «по показателям парка».",
     "Словарь для сопоставления (используй молча, не цитируй имена полей пользователю): СННО — наработка на отказ, часы по объектам в разделе показателей MTBF; СВВ — время восстановления (MTTR); КТГ — готовность по объектам в таблице КТГ.",
+    "Дополнительный словарь: запросы про ремонты сотрудников, выполненные работы сотрудников, загрузку персонала и трудозатраты сотрудников трактуй как один и тот же срез по персоналу за год (факт/план часов). Этот срез нужно сопоставлять со структурой работ по месяцам, где трудозатраты отражают суммарный объем работ.",
+    "Если вопрос про организации или подразделения в части персонала, используй срез по сотрудникам с группировкой по организациям/подразделениям и отвечай по факту, плану и выполнению.",
     "Не утверждай, что СННО или КТГ отсутствуют, если в контексте есть соответствующие показатели.",
+    "Если вопрос касается графика износа - проанализируй изображение и включи в ответ данные из изображения. В fact опиши, что видно на картинке; в conclusion — выводы по этому визуалу, не копируя дословно абзац о назначении графика. В action — шаги без имён файлов и интеграций. Если вопрос касается не только графика - сократи информацию по этому графику и выдай ее как часть ответа, не забыв про другую часть ответа на вопрос пользователя",
     "График процента износа на дашборде: график процента износа визуализирует текущее состояние оборудования, позволяя оценить степень выработки ресурса и прогнозировать необходимость проведения планово-предупредительных работ (ППР) или замены узлов.",
-    "Если вопрос обзорный (новичок, «что за графики», «что показывают все графики», обзор дашборда) — кратко перечисли основные блоки по контексту: затраты по месяцам, отказы/причины, КТГ, СННО/СВВ, структура работ, износ и др., не своди ответ только к одному графику.",
-    "Если к запросу приложено изображение графика износа и вопрос именно про него: в fact опиши, что видно на картинке; в conclusion — выводы по этому визуалу, не копируя дословно абзац о назначении графика. В action — шаги без имён файлов и интеграций.",
-    "Если изображения нет и в контексте нет чисел по износу, честно скажи, что детальные проценты по износу из текста контекста недоступны, без технических подробностей устройства данных.",
     "Опирайся на показатели из контекста; не выдумывай цифры, которых нет в данных или на приложенном изображении.",
     "Формат ответа: JSON с ключами fact, conclusion, action.",
     "fact — факты и цифры по сути вопроса;",
@@ -168,6 +175,30 @@ function buildSystemPrompt() {
     "action — предлагаемые действия.",
     "Если ответить нельзя, fact: 'Сожалею, но пока не могу ответить на ваш вопрос.'",
   ].join(" ");
+}
+
+function buildMockOpenRouterResult({ question, context, requestId }) {
+  const ctx = context && typeof context === "object" ? context : {};
+  const summary = {
+    contextKeys: Object.keys(ctx).length,
+    hasCharts: Boolean(ctx.charts),
+    hasKpis: Boolean(ctx.kpis),
+  };
+  const answer = {
+    fact: `[MOCK] Вопрос к модели: ${String(question || "").trim()}`,
+    conclusion: `[MOCK] Контекст получен. keys=${summary.contextKeys}, charts=${summary.hasCharts}, kpis=${summary.hasKpis}.`,
+    action: "[MOCK] Проверить, что финальный ответ на дашборде совпадает с детокенизированной версией.",
+    parseOk: true,
+  };
+  return {
+    ok: true,
+    status: 200,
+    latencyMs: 1,
+    providerModel: "mock/openrouter",
+    requestId,
+    answer,
+    rawContent: JSON.stringify(answer),
+  };
 }
 
 async function sendOpenRouterRequest({ apiKey, model, question, context, requestId }) {
@@ -217,6 +248,7 @@ async function sendOpenRouterRequest({ apiKey, model, question, context, request
         latencyMs,
         providerModel: json?.model || model,
         answer: normalizeAnswer(rawContent),
+        rawContent,
         requestId,
       };
     } catch (e) {
@@ -236,6 +268,10 @@ async function sendOpenRouterRequest({ apiKey, model, question, context, request
 }
 
 async function askOpenRouter({ question, context, requestId }) {
+  if (parseBool(process.env.OPENROUTER_MOCK_ENABLED, false)) {
+    return buildMockOpenRouterResult({ question, context, requestId });
+  }
+
   const apiKey = (process.env.OPENROUTER_API_KEY || "").trim();
   if (!apiKey) {
     const err = new Error("OPENROUTER_API_KEY is not configured");

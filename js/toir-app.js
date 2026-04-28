@@ -275,6 +275,105 @@
     return escapeHtml(s).replace(/\n/g, " ");
   }
 
+  function renderPersonnelDlp(payload) {
+    const section = document.getElementById("personnelDlpSection");
+    if (!section) return;
+
+    const rows = payload?.table?.rows;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      section.hidden = true;
+      return;
+    }
+
+    section.hidden = false;
+
+    const sub = document.getElementById("personnelDlpSub");
+    if (sub) {
+      const source = payload?.meta?.source || "data/personnel_dlp_test.json";
+      const count = Number(payload?.meta?.employees_count) || rows.length;
+      sub.textContent = `Источник: ${source} · сотрудников: ${count}`;
+    }
+
+    const chartBox = document.getElementById("chartPersonnelDlp");
+    if (chartBox) {
+      if (payload?.chart && typeof Charts?.renderAgentChart === "function") {
+        Charts.renderAgentChart(payload.chart, "#chartPersonnelDlp", 420);
+      } else {
+        chartBox.textContent = "В файле personnel_dlp_test.json нет данных для графика";
+      }
+    }
+  }
+
+  function renderPersonnelOrgUsage(payload) {
+    const section = document.getElementById("personnelOrgSection");
+    if (!section) return;
+
+    const rows = payload?.table?.rows;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      section.hidden = true;
+      return;
+    }
+
+    section.hidden = false;
+
+    const sub = document.getElementById("personnelOrgSub");
+    if (sub) {
+      const source = payload?.meta?.source || "data/personnel_org_usage.json";
+      const orgCount = Number(payload?.meta?.organizations_count) || 0;
+      const depCount = Number(payload?.meta?.departments_count) || 0;
+      const empCount = Number(payload?.meta?.employees_count) || rows.length;
+      sub.textContent = `Источник: ${source} · организаций: ${orgCount} · подразделений: ${depCount} · сотрудников: ${empCount}`;
+    }
+
+    const chartBox = document.getElementById("chartPersonnelOrg");
+    if (chartBox) {
+      if (payload?.chart && typeof Charts?.renderAgentChart === "function") {
+        Charts.renderAgentChart(payload.chart, "#chartPersonnelOrg", 420);
+      } else {
+        chartBox.textContent = "В файле personnel_org_usage.json нет данных для графика";
+      }
+    }
+  }
+
+  function buildAssistantContext(data, personnelData, personnelOrgData) {
+    const semanticDictionary = {
+      repairs_staff_workload:
+        "Запросы про ремонты сотрудников, выполненные работы сотрудников, загрузку персонала и трудозатраты сотрудников относятся к одному и тому же годовому срезу по персоналу.",
+      link_to_material_labor:
+        "Годовой срез по сотрудникам нужно сопоставлять со структурой работ по месяцам, где labor_h отражает общий объем трудовых работ.",
+      org_department_slice:
+        "Запросы про загрузку персонала по организациям и подразделениям относятся к детализированному срезу по сотрудникам с группировками organization и department.",
+    };
+
+    const ctx = { ...data, semanticDictionary };
+
+    if (personnelData && Array.isArray(personnelData?.table?.rows)) {
+      ctx.personnel = {
+        meta: personnelData.meta || {},
+        table: {
+          title: personnelData?.table?.title || "",
+          columns: Array.isArray(personnelData?.table?.columns) ? personnelData.table.columns : [],
+          rows: personnelData.table.rows,
+        },
+      };
+    }
+
+    if (personnelOrgData && Array.isArray(personnelOrgData?.table?.rows)) {
+      ctx.personnelByOrganization = {
+        meta: personnelOrgData.meta || {},
+        table: {
+          title: personnelOrgData?.table?.title || "",
+          columns: Array.isArray(personnelOrgData?.table?.columns) ? personnelOrgData.table.columns : [],
+          rows: personnelOrgData.table.rows,
+        },
+        departments: Array.isArray(personnelOrgData?.departments) ? personnelOrgData.departments : [],
+        organizations: Array.isArray(personnelOrgData?.organizations) ? personnelOrgData.organizations : [],
+      };
+    }
+
+    return ctx;
+  }
+
 
   function renderWearImage(data) {
     const box = document.getElementById("chartWearImage");
@@ -350,12 +449,94 @@
   function wireUi(data) {
     const periodSel = document.getElementById("panelPeriod");
     const classSel = document.getElementById("panelClass");
+    let resizeTimer = null;
+    let sidebarSyncRaf = null;
+    let layoutObserver = null;
+    const DESKTOP_AI_PANEL_MIN_HEIGHT = 560;
+    const DESKTOP_AI_PANEL_FALLBACK_HEIGHT = 620;
+
+    function resetAiSidebarSizing(sidebar) {
+      if (!sidebar) return;
+      sidebar.style.height = "";
+      sidebar.style.alignSelf = "";
+      sidebar.style.maxHeight = "";
+    }
+
+    function getActivePanelAnchor() {
+      const activePanel = document.querySelector(".panel-charts:not([hidden])");
+      if (!activePanel) return null;
+      const hero = activePanel.querySelector(".chart-card.chart-hero");
+      if (hero) return hero;
+      return (
+        activePanel.querySelector(".charts-grid .chart-card") ||
+        activePanel.querySelector(".charts-grid--sub .chart-card") ||
+        activePanel.querySelector(".charts-grid--3 .chart-card") ||
+        activePanel.querySelector(".chart-card")
+      );
+    }
+
+    function syncAiSidebarToCostsChart() {
+      const sidebar = document.querySelector(".layout-sidebar");
+      if (!sidebar) return;
+
+      const wide = window.matchMedia && window.matchMedia("(min-width: 992px)").matches;
+      if (!wide) {
+        resetAiSidebarSizing(sidebar);
+        return;
+      }
+
+      const layout = document.querySelector(".layout");
+      const anchor = getActivePanelAnchor();
+      if (!layout || !anchor) {
+        sidebar.style.alignSelf = "start";
+        sidebar.style.height = `${DESKTOP_AI_PANEL_FALLBACK_HEIGHT}px`;
+        sidebar.style.maxHeight = "none";
+        return;
+      }
+
+      const layoutRect = layout.getBoundingClientRect();
+      const anchorRect = anchor.getBoundingClientRect();
+      const sidebarRect = sidebar.getBoundingClientRect();
+      if (!Number.isFinite(anchorRect.bottom) || !Number.isFinite(sidebarRect.top)) {
+        sidebar.style.alignSelf = "start";
+        sidebar.style.height = `${DESKTOP_AI_PANEL_FALLBACK_HEIGHT}px`;
+        sidebar.style.maxHeight = "none";
+        return;
+      }
+
+      const desiredBottom = anchorRect.bottom - layoutRect.top;
+      const top = sidebarRect.top - layoutRect.top;
+      let height = Math.round(desiredBottom - top);
+      if (!Number.isFinite(height)) height = DESKTOP_AI_PANEL_FALLBACK_HEIGHT;
+      height = Math.max(DESKTOP_AI_PANEL_MIN_HEIGHT, height);
+
+      sidebar.style.alignSelf = "start";
+      sidebar.style.height = `${height}px`;
+      sidebar.style.maxHeight = "none";
+    }
+
+    function scheduleSyncAiSidebar() {
+      if (sidebarSyncRaf) cancelAnimationFrame(sidebarSyncRaf);
+      sidebarSyncRaf = requestAnimationFrame(() => {
+        sidebarSyncRaf = null;
+        syncAiSidebarToCostsChart();
+      });
+    }
 
     document.querySelectorAll(".tab").forEach((btn) => {
       btn.addEventListener("click", () => {
         applyTab(btn.dataset.tab);
         Charts.resizeAll();
+        scheduleSyncAiSidebar();
       });
+    });
+
+    window.addEventListener("resize", () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        Charts.resizeAll();
+        scheduleSyncAiSidebar();
+      }, 120);
     });
 
     const allRowsForClasses = buildEquipmentRows(
@@ -537,7 +718,11 @@
       document.getElementById("footerSource").textContent =
         `Источник: ${data.meta?.source || "—"} → data/toir.json · ${data.meta?.period || ""}`;
 
-      setTimeout(() => Charts.resizeAll(), 120);
+      setTimeout(() => {
+        Charts.resizeAll();
+        scheduleSyncAiSidebar();
+      }, 120);
+      setTimeout(scheduleSyncAiSidebar, 260);
     };
 
     periodSel?.addEventListener("change", drain);
@@ -552,11 +737,24 @@
 
     drain();
     applyTab("summary");
+
+    const layoutEl = document.querySelector(".layout");
+    const mainEl = document.querySelector(".layout-main");
+    if (layoutEl && typeof ResizeObserver !== "undefined") {
+      layoutObserver = new ResizeObserver(() => scheduleSyncAiSidebar());
+      layoutObserver.observe(layoutEl);
+      if (mainEl) layoutObserver.observe(mainEl);
+    }
+
+    scheduleSyncAiSidebar();
   }
 
   function detectIntentFromQuestion(question) {
     const ql = String(question || "").toLowerCase();
     const hasKtgToken = /ктг|готовност/i.test(ql);
+    const hasPersonnelToken = /сотрудник|персонал|бригад|мастер|слесар/i.test(ql);
+    const hasRepairWorkToken = /ремонт|работ|трудозатрат|загрузк|выполнен/i.test(ql);
+    const hasOrgToken = /организац|компан|подраздел|цех|отдел/i.test(ql);
     const reliabilityCombo =
       (/надёжност|надежност|снно|свв|mtbf|mttr|наработк|восстанов|простой/i.test(ql) || hasKtgToken) &&
       (/обзор|кратк|в целом|состояни|парк|дашборд|оцен|общ/i.test(ql));
@@ -564,6 +762,10 @@
     if (/прогноз|предска|forecast/i.test(ql)) return "forecast";
     if (/что делать|что спросить|рекоменд|действ/i.test(ql)) return "recommendation";
     if (reliabilityCombo) return "overview_reliability";
+    if ((hasPersonnelToken || hasRepairWorkToken) && hasOrgToken) return "personnel_org_breakdown";
+    if (/по\s+(организац|подраздел)/i.test(ql) && /факт|план|выполн|загрузк|трудозатрат/i.test(ql)) return "personnel_org_breakdown";
+    if (hasPersonnelToken && hasRepairWorkToken) return "personnel_repair_workload";
+    if (/кто.*(ремонт|работ)|сколько.*(ремонт|работ).*(сотруд|персонал)/i.test(ql)) return "personnel_repair_workload";
     if (/кратк|обзор|проанализ|весь дашборд|всего дашборд|в целом|что важного/i.test(ql)) return "dashboard_overview";
     if (/почему.*затрат|затрат.*почему|выросл.*затрат|снизил.*затрат/i.test(ql)) return "why_costs_changed";
     if (/почему.*отказ|отказ.*почему|выросл.*отказ|снизил.*отказ/i.test(ql)) return "why_failures_changed";
@@ -572,7 +774,7 @@
       /месяц|январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр/.test(ql)
     )
       return "compare_costs_by_month";
-    if (/материал|трудозатрат|труд.*материал|структур.*работ/i.test(ql)) return "material_labor_structure";
+    if (/материал|трудозатрат|труд.*материал|структур.*работ|структур.*ремонт|ремонт.*по месяц/i.test(ql)) return "material_labor_structure";
     if (/доля.*затрат.*класс|затрат.*по класс|структур.*затрат.*класс/i.test(ql)) return "class_cost_structure";
     if (hasKtgToken && /снно|mtbf|наработк/i.test(ql) && /причин|причины|отказов/i.test(ql)) return "reliability_combo_qa";
     if (/mtbf|снно|наработк/i.test(ql)) return "mtbf_by_equipment";
@@ -613,6 +815,10 @@
     const materialLaborRows = data.charts?.materialLaborByMonth || [];
     const ktgMap = data.tables?.ktg || {};
     const equipmentCosts = data.tables?.equipmentCosts || {};
+    const personnelRows = data.personnel?.table?.rows || [];
+    const personnelOrgRows = data.personnelByOrganization?.table?.rows || [];
+    const departmentRows = data.personnelByOrganization?.departments || [];
+    const organizationRows = data.personnelByOrganization?.organizations || [];
 
     const noAnswer = (extra = "") => {
       return {
@@ -809,6 +1015,119 @@
       };
     }
 
+    if (intent === "personnel_org_breakdown") {
+      if (!personnelOrgRows.length) {
+        return noAnswer("В выгрузке нет детализации сотрудников по организациям и подразделениям.");
+      }
+
+      const rows = personnelOrgRows
+        .map((r) => ({
+          organization: r.organization || "—",
+          department: r.department || "—",
+          employee: r.employee || "—",
+          fact: Number(r.fact_h) || 0,
+          plan: Number(r.plan_h) || 0,
+          utilization: Number(r.utilization_pct) || 0,
+        }))
+        .sort((a, b) => b.fact - a.fact);
+
+      const totalFact = rows.reduce((s, r) => s + r.fact, 0);
+      const totalPlan = rows.reduce((s, r) => s + r.plan, 0);
+      const totalUtilization = totalPlan > 0 ? (totalFact / totalPlan) * 100 : 0;
+
+      const topDepartments = departmentRows
+        .map((r) => ({
+          department: r.department || "—",
+          organization: r.organization || "—",
+          fact: Number(r.fact_h) || 0,
+        }))
+        .sort((a, b) => b.fact - a.fact)
+        .slice(0, 3);
+
+      const topOrganizations = organizationRows
+        .map((r) => ({
+          organization: r.organization || "—",
+          fact: Number(r.fact_h) || 0,
+          utilization: Number(r.utilization_pct) || 0,
+        }))
+        .sort((a, b) => b.fact - a.fact)
+        .slice(0, 3);
+
+      const topEmployees = rows.slice(0, 3);
+      const orgFact =
+        topOrganizations.length > 0
+          ? `Организации (топ): ${topOrganizations
+              .map(
+                (x) =>
+                  `${x.organization} — ${x.fact.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ч (выполнение ${x.utilization.toLocaleString("ru-RU", {
+                    maximumFractionDigits: 1,
+                  })}%)`
+              )
+              .join("; ")}. `
+          : "";
+      const depFact =
+        topDepartments.length > 0
+          ? `Подразделения (топ): ${topDepartments
+              .map((x) => `${x.department} (${x.organization}) — ${x.fact.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ч`)
+              .join("; ")}. `
+          : "";
+
+      return {
+        fact:
+          `По срезу организаций и подразделений: факт ${Math.round(totalFact).toLocaleString("ru-RU")} ч при плане ${Math.round(totalPlan).toLocaleString(
+            "ru-RU"
+          )} ч (${totalUtilization.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%). ` +
+          orgFact +
+          depFact +
+          `Топ сотрудников по факту: ${topEmployees
+            .map((x) => `${x.employee} (${x.department}) — ${x.fact.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ч`)
+            .join("; ")}.`,
+        conclusion:
+          "Детализация по организациям и подразделениям показывает, где сосредоточены трудозатраты и какие команды формируют основной вклад.",
+        action:
+          "Для управленческих решений сравните топ-подразделения по факту с их планом и проверьте сотрудников с наибольшей загрузкой на устойчивость графика работ.",
+      };
+    }
+
+    if (intent === "personnel_repair_workload") {
+      const workloadRows = personnelOrgRows.length ? personnelOrgRows : personnelRows;
+      if (!workloadRows.length) {
+        return noAnswer("В выгрузке нет годового среза по сотрудникам и выполненным работам.");
+      }
+
+      const rows = workloadRows
+        .map((r) => ({
+          employee: r.employee || "—",
+          fact: Number(r.fact_h) || 0,
+          plan: Number(r.plan_h) || 0,
+          utilization: Number(r.utilization_pct) || 0,
+        }))
+        .sort((a, b) => b.fact - a.fact);
+
+      const top = rows.slice(0, 3);
+      const totalFact = rows.reduce((s, r) => s + r.fact, 0);
+      const totalPlan = rows.reduce((s, r) => s + r.plan, 0);
+      const totalUtilization = totalPlan > 0 ? (totalFact / totalPlan) * 100 : 0;
+      const laborTotal = materialLaborRows.reduce((s, r) => s + (Number(r.labor_h || r.labor || 0) || 0), 0);
+
+      const relationText =
+        laborTotal > 0
+          ? ` Срез сотрудников соотносится со структурой работ по месяцам: суммарные трудозатраты по месяцам = ${Math.round(laborTotal).toLocaleString("ru-RU")} ч.`
+          : "";
+
+      return {
+        fact:
+          `В годовом срезе сотрудников фактический объем выполненных работ: ${Math.round(totalFact).toLocaleString("ru-RU")} ч при плане ${Math.round(totalPlan).toLocaleString("ru-RU")} ч ` +
+          `(${totalUtilization.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%). ` +
+          `Топ сотрудников по факту: ${top.map((x) => `${x.employee} — ${x.fact.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ч`).join("; ")}.` +
+          relationText,
+        conclusion:
+          "Запросы про ремонты сотрудников, выполненные работы персонала и трудозатраты сотрудников относятся к одному и тому же годовому показателю по персоналу.",
+        action:
+          "Для расшифровки динамики сопоставьте этот срез со структурой работ по месяцам и проверьте месяцы с максимальными трудозатратами.",
+      };
+    }
+
     if (intent === "material_labor_structure") {
       if (!materialLaborRows.length) return noAnswer("В выгрузке нет структуры работ по трудозатратам и материалам.");
       const totalMaterial = materialLaborRows.reduce((s, r) => s + (Number(r.material_h || r.material || 0) || 0), 0);
@@ -980,7 +1299,6 @@
     const body = JSON.stringify({
       question,
       context: fullContext,
-      contextExpanded: fullContext,
     });
     const attempts = 5;
     const pauseMs = 600;
@@ -1031,10 +1349,238 @@
     return aiAnswer(question, data);
   }
 
-  function wireAi(data) {
+  const runtimeAgent = {
+    baseUrl: window.TOIR_API_URL
+      ? window.TOIR_API_URL.replace("/api/chat", "/api/agent")
+      : "http://localhost:8787/api/agent",
+    timeoutMs: 70000,
+  };
+
+  let currentAiMode = "agent";
+
+  async function askAgent(question, filters) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), runtimeAgent.timeoutMs);
+    try {
+      const res = await fetch(runtimeAgent.baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        signal: controller.signal,
+        body: JSON.stringify({ question, filters: filters || {} }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) return null;
+      return json;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function renderArtifactTable(artifact, container) {
+    const card = document.createElement("div");
+    card.className = "ai-artifact-card";
+    const title = document.createElement("div");
+    title.className = "ai-artifact-title";
+    title.textContent = artifact.title || "Таблица";
+    card.appendChild(title);
+    if (artifact?.meta?.forecast) {
+      const badge = document.createElement("div");
+      badge.className = "ai-artifact-badge";
+      badge.textContent = "Прогноз";
+      card.appendChild(badge);
+    }
+
+    const wrap = document.createElement("div");
+    wrap.className = "ai-artifact-table-wrap";
+    const table = document.createElement("table");
+    table.className = "ai-artifact-table";
+
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    for (const col of (artifact.columns || [])) {
+      const th = document.createElement("th");
+      th.textContent = col.label || col.key;
+      headRow.appendChild(th);
+    }
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    for (const row of (artifact.rows || []).slice(0, 100)) {
+      const tr = document.createElement("tr");
+      for (const col of (artifact.columns || [])) {
+        const td = document.createElement("td");
+        const val = row[col.key];
+        if (typeof val === "number") {
+          td.textContent = val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+        } else {
+          td.textContent = val != null ? String(val) : "—";
+        }
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    card.appendChild(wrap);
+
+    const expandBtn = document.createElement("button");
+    expandBtn.className = "ai-artifact-expand-btn";
+    expandBtn.textContent = "Развернуть";
+    expandBtn.addEventListener("click", () => expandArtifact(artifact));
+    card.appendChild(expandBtn);
+
+    container.appendChild(card);
+  }
+
+  function renderArtifactChart(artifact, container) {
+    const card = document.createElement("div");
+    card.className = "ai-artifact-card";
+    const title = document.createElement("div");
+    title.className = "ai-artifact-title";
+    title.textContent = artifact.title || "График";
+    card.appendChild(title);
+    if (artifact?.meta?.forecast) {
+      const badge = document.createElement("div");
+      badge.className = "ai-artifact-badge";
+      badge.textContent = "Прогноз";
+      card.appendChild(badge);
+    }
+
+    const chartBox = document.createElement("div");
+    chartBox.className = "ai-artifact-chart-box";
+    const chartId = `agentChart_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    chartBox.id = chartId;
+    card.appendChild(chartBox);
+
+    const expandBtn = document.createElement("button");
+    expandBtn.className = "ai-artifact-expand-btn";
+    expandBtn.textContent = "Развернуть";
+    expandBtn.addEventListener("click", () => expandArtifact(artifact));
+    card.appendChild(expandBtn);
+
+    container.appendChild(card);
+
+    requestAnimationFrame(() => {
+      Charts.renderAgentChart(artifact, `#${chartId}`, 200);
+    });
+  }
+
+  function renderArtifacts(artifacts, target) {
+    const container = typeof target === "string" ? document.querySelector(target) : target;
+    if (!container) return;
+    container.innerHTML = "";
+    if (!artifacts || !artifacts.length) {
+      container.hidden = true;
+      return;
+    }
+    container.hidden = false;
+    for (const art of artifacts) {
+      if (art.type === "table") renderArtifactTable(art, container);
+      else if (art.type === "chart") renderArtifactChart(art, container);
+    }
+  }
+
+  function expandArtifact(artifact) {
+    const ws = document.getElementById("agentWorkspace");
+    if (!ws) return;
+    ws.innerHTML = "";
+    ws.hidden = false;
+
+    const card = document.createElement("div");
+    card.className = "card agent-workspace-card";
+
+    const header = document.createElement("div");
+    header.className = "agent-workspace-header";
+    const h3 = document.createElement("h3");
+    h3.textContent = artifact.title || "Артефакт агента";
+    header.appendChild(h3);
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "agent-workspace-close";
+    closeBtn.textContent = "\u00d7";
+    closeBtn.addEventListener("click", () => { ws.hidden = true; ws.innerHTML = ""; });
+    header.appendChild(closeBtn);
+    card.appendChild(header);
+
+    if (artifact.type === "table") {
+      const wrap = document.createElement("div");
+      wrap.className = "ai-artifact-table-wrap";
+      const table = document.createElement("table");
+      table.className = "ai-artifact-table ai-artifact-table--full";
+      const thead = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      for (const col of (artifact.columns || [])) {
+        const th = document.createElement("th");
+        th.textContent = col.label || col.key;
+        headRow.appendChild(th);
+      }
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+      const tbody = document.createElement("tbody");
+      for (const row of (artifact.rows || []).slice(0, 200)) {
+        const tr = document.createElement("tr");
+        for (const col of (artifact.columns || [])) {
+          const td = document.createElement("td");
+          const val = row[col.key];
+          if (typeof val === "number") {
+            td.textContent = val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+          } else {
+            td.textContent = val != null ? String(val) : "—";
+          }
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      card.appendChild(wrap);
+    } else if (artifact.type === "chart") {
+      const chartBox = document.createElement("div");
+      const chartId = `wsChart_${Date.now()}`;
+      chartBox.id = chartId;
+      chartBox.style.minHeight = "350px";
+      card.appendChild(chartBox);
+      ws.appendChild(card);
+      requestAnimationFrame(() => {
+        Charts.renderAgentChart(artifact, `#${chartId}`, 350);
+      });
+      ws.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    ws.appendChild(card);
+    ws.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function wireAi(data, assistantContext) {
     const log = document.getElementById("aiLog");
     const input = document.getElementById("aiInput");
     const btn = document.getElementById("aiSend");
+    const artifactsContainer = document.getElementById("aiArtifacts");
+    const modeToggle = document.getElementById("aiModeToggle");
+    const descEl = document.getElementById("aiDesc");
+
+    const modeDescriptions = {
+      agent: "Агент анализирует данные, выполняет вычисления и строит графики/таблицы.",
+      chat: "Быстрый текстовый ответ по формату факт \u2192 вывод \u2192 действие.",
+    };
+
+    if (modeToggle) {
+      modeToggle.addEventListener("click", (e) => {
+        const btn2 = e.target.closest(".ai-mode-btn");
+        if (!btn2) return;
+        const mode = btn2.dataset.mode;
+        if (!mode || mode === currentAiMode) return;
+        currentAiMode = mode;
+        modeToggle.querySelectorAll(".ai-mode-btn").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
+        if (descEl) descEl.textContent = modeDescriptions[mode] || "";
+        if (artifactsContainer) { artifactsContainer.hidden = true; artifactsContainer.innerHTML = ""; }
+      });
+    }
 
     function pushBubble(text, ai) {
       const div = document.createElement("div");
@@ -1050,12 +1596,47 @@
       if (!q) return;
       pushBubble(escapeHtml(q), false);
       input.value = "";
-      const pending = pushBubble('<div class="block-title">Ответ</div>Думаю...', true);
-      const { fact, conclusion, action } = await askCloudLlm(q, data);
-      pending.innerHTML =
-        `<div class="block-title">Факт</div>${escapeHtml(fact)}` +
+
+      if (currentAiMode === "agent") {
+        const uiFilters = {
+          period: document.getElementById("panelPeriod")?.value || null,
+          class: document.getElementById("panelClass")?.value || null,
+        };
+        const pending = pushBubble('<div class="block-title">Агент</div><span class="agent-thinking">Анализирую данные\u2026</span>', true);
+
+        const agentResult = await askAgent(q, uiFilters);
+        if (agentResult && agentResult.answer) {
+          const a = agentResult.answer;
+          let traceHtml = "";
+          if (agentResult.trace) {
+            const t = agentResult.trace;
+            traceHtml = `<div class="agent-trace">Шагов: ${t.steps || 0}${t.toolsUsed?.length ? ` \u00b7 Инструменты: ${t.toolsUsed.join(", ")}` : ""}</div>`;
+          }
+          pending.innerHTML =
+            `<div class="block-title">Факт</div>${escapeHtml(a.fact)}` +
+            `<div class="block-title" style="margin-top:8px">Вывод</div>${escapeHtml(a.conclusion)}` +
+            `<div class="block-title" style="margin-top:8px">Действие</div>${escapeHtml(a.action)}` +
+            traceHtml;
+
+          if (agentResult.artifacts && agentResult.artifacts.length > 0) {
+            renderArtifacts(agentResult.artifacts, artifactsContainer);
+          }
+        } else {
+          const { fact, conclusion, action } = await askCloudLlm(q, assistantContext);
+          pending.innerHTML =
+            `<div class="block-title">Факт</div>${escapeHtml(fact)}` +
+            `<div class="block-title" style="margin-top:8px">Вывод</div>${escapeHtml(conclusion)}` +
+            `<div class="block-title" style="margin-top:8px">Действие</div>${escapeHtml(action)}` +
+            '<div class="agent-trace">Fallback: быстрый ответ</div>';
+        }
+      } else {
+        const pending = pushBubble('<div class="block-title">Ответ</div>Думаю\u2026', true);
+        const { fact, conclusion, action } = await askCloudLlm(q, assistantContext);
+        pending.innerHTML =
+          `<div class="block-title">Факт</div>${escapeHtml(fact)}` +
           `<div class="block-title" style="margin-top:8px">Вывод</div>${escapeHtml(conclusion)}` +
           `<div class="block-title" style="margin-top:8px">Действие</div>${escapeHtml(action)}`;
+      }
       log.scrollTop = log.scrollHeight;
     };
 
@@ -1070,9 +1651,11 @@
 
   async function boot() {
     try {
-      const [dashRes, brandRes] = await Promise.all([
+      const [dashRes, brandRes, personnelRes, personnelOrgRes] = await Promise.all([
         fetch("data/toir.json", { cache: "no-store" }),
         fetch("assets/brand.json", { cache: "no-store" }),
+        fetch("data/personnel_dlp_test.json", { cache: "no-store" }),
+        fetch("data/personnel_org_usage.json", { cache: "no-store" }),
       ]);
       const data = await dashRes.json();
       window.dashboardData = data;
@@ -1080,8 +1663,27 @@
         const brand = await brandRes.json();
         U.applyBrandTokens(brand);
       }
+      let personnelData = null;
+      if (personnelRes.ok) {
+        try {
+          personnelData = await personnelRes.json();
+        } catch (personnelErr) {
+          console.warn("Failed to parse personnel_dlp_test.json", personnelErr);
+        }
+      }
+      let personnelOrgData = null;
+      if (personnelOrgRes.ok) {
+        try {
+          personnelOrgData = await personnelOrgRes.json();
+        } catch (personnelOrgErr) {
+          console.warn("Failed to parse personnel_org_usage.json", personnelOrgErr);
+        }
+      }
       wireUi(data);
-      wireAi(data);
+      renderPersonnelDlp(personnelData);
+      renderPersonnelOrgUsage(personnelOrgData);
+      const assistantContext = buildAssistantContext(data, personnelData, personnelOrgData);
+      wireAi(data, assistantContext);
     } catch (e) {
       console.error(e);
       document.getElementById("footerSource").textContent = "Ошибка загрузки data/toir.json";

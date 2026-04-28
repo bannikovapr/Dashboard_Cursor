@@ -45,26 +45,20 @@ if (Test-Path -LiteralPath $dataDir -PathType Container) {
 if ($xlsxCount -ge 7) {
   Write-Host "Detected $xlsxCount xlsx files in data/ (multi-report mode expected)." -ForegroundColor Green
 } else {
-  Write-Warning "Less than 7 xlsx files in data/. Analyzer may use legacy fallback file."
-}
-
-function Get-PythonLauncher {
-  if (Get-Command py -ErrorAction SilentlyContinue) { return "py" }
-  if (Get-Command python -ErrorAction SilentlyContinue) { return "python" }
-  return $null
+  Write-Warning "Less than 7 xlsx files in data/. Dashboard build will fail until all reports are present."
 }
 
 if (-not $NoRefresh) {
-  $pyCmd = Get-PythonLauncher
-  if (-not $pyCmd) {
-    Write-Warning "Python is not found. Skip data/toir.json refresh."
+  $nodeCmdForBuild = Get-NodeLauncher
+  if (-not $nodeCmdForBuild) {
+    Write-Warning "Node.js is not found. Skip data/toir.json refresh."
   } else {
-    Write-Host "Refreshing data/toir.json ..." -ForegroundColor Yellow
-    & $pyCmd "scripts/analyze_toir.py"
+    Write-Host "Preparing data/toir.json from 7 Excel reports ..." -ForegroundColor Yellow
+    & $nodeCmdForBuild "scripts/build-dashboard-json.js"
     if ($LASTEXITCODE -ne 0) {
-      throw "scripts/analyze_toir.py failed (exit code: $LASTEXITCODE)"
+      throw "scripts/build-dashboard-json.js failed (exit code: $LASTEXITCODE)"
     }
-    Write-Host "Done: data/toir.json updated." -ForegroundColor Green
+    Write-Host "Done: data/toir.json prepared from reports." -ForegroundColor Green
   }
 } else {
   Write-Host "No refresh mode (-NoRefresh)." -ForegroundColor DarkYellow

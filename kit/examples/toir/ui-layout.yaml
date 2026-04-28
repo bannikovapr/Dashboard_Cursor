@@ -1,0 +1,102 @@
+# Пример ui-layout.yaml для reference-проекта (ТОиР).
+# 4 вкладки, 8 KPI, ~12 графиков, 2 таблицы.
+
+version: "1.0"
+
+header:
+  show_logo: true
+  show_title: true
+  chips:
+    - { id: period,     label: "Период",    bind: "meta.period" }
+    - { id: klass,      label: "Класс",     bind: "meta.class" }
+    - { id: equip,      label: "Объектов",  bind: "analysis.equipment_count" }
+    - { id: updated,    label: "Обновлено", bind: "meta.generated_at" }
+
+filters:
+  - id: panelPeriod
+    label: "Период"
+    kind: "select"
+    options:
+      - { value: "all", label: "Последние 12 месяцев" }
+      - { value: "h1",  label: "1-е полугодие 2025" }
+      - { value: "h2",  label: "2-е полугодие 2025" }
+    default: "all"
+
+  - id: panelClass
+    label: "Класс оборудования"
+    kind: "select"
+    options_from: { dataset: "equipment_costs", field: "class", add_all: true }
+    default: "__all__"
+
+kpi_block:
+  columns_desktop: 4
+  columns_tablet: 2
+  columns_mobile: 1
+  cards:
+    - { ref: kpiTotal }
+    - { ref: kpiTop3 }
+    - { ref: kpiAvgUnit }
+    - { ref: kpiDown }
+    - { ref: kpiFails }
+    - { ref: kpiKtg }
+    - { ref: kpiPerEq }
+    - { ref: kpiMtbf }
+
+tabs:
+
+  - id: summary
+    label: "Сводка"
+    charts:
+      - { id: chartCosts,     kind: "line",  title: "Динамика затрат",      bind: "charts.costsByMonth", x: "month", y: "total" }
+      - { id: chartStructure, kind: "donut", title: "Структура парка",      bind: "charts.equipmentByClass" }
+      - { id: chartCauses,    kind: "bar",   title: "Причины отказов",      bind: "charts.failureCauses", x: "cause", y: "count" }
+
+  - id: costs
+    label: "Затраты"
+    charts:
+      - { id: chartCostsTab,         kind: "line",  title: "Затраты по месяцам",           bind: "charts.costsByMonth" }
+      - { id: chartMaterialLabor,    kind: "bar",   title: "Труд и материалы по месяцам",  bind: "charts.materialLaborByMonth" }
+      - { id: chartTopCostEquip,     kind: "bar",   title: "Топ объектов по затратам",      bind: "tables.equipmentCosts" }
+      - { id: chartClassCostDonut,   kind: "donut", title: "Доля затрат по классам",        bind: "charts.classCosts" }
+
+  - id: reliability
+    label: "Надёжность"
+    charts:
+      - { id: chartCausesRel,    kind: "bar",  title: "Причины отказов",  bind: "charts.failureCauses" }
+      - { id: chartKtgTrend,     kind: "line", title: "Тренд КТГ",        bind: "charts.ktgMonthly" }
+      - { id: chartMtbfTop,      kind: "bar",  title: "Топ СННО",         bind: "charts.mtbfByEquipment" }
+      - { id: chartMttrTop,      kind: "bar",  title: "Топ СВВ",          bind: "charts.mttrByEquipment" }
+
+  - id: equipment
+    label: "Оборудование"
+    charts:
+      - { id: chartStructureEq,   kind: "donut", title: "Структура парка",    bind: "charts.equipmentByClass" }
+      - { id: chartWearImage,     kind: "image", title: "Износ",              bind: "charts.wearImage" }
+      - { id: chartClassCostsBar, kind: "bar",   title: "Затраты по классам", bind: "charts.classCosts" }
+    tables:
+      - id: tblClasses
+        title: "Классы оборудования"
+        bind: "tables.equipmentCosts"
+        columns:
+          - { field: "class",  label: "Класс" }
+          - { field: "count",  label: "Кол-во", align: "right" }
+          - { field: "total",  label: "Затраты, ₽", align: "right", format: "currency" }
+      - id: tblTop
+        title: "Топ проблемных объектов"
+        bind: "tables.equipmentDefects"
+        columns:
+          - { field: "name",  label: "Оборудование" }
+          - { field: "class", label: "Класс" }
+          - { field: "count", label: "Отказов", align: "right" }
+
+chart_policy:
+  mono_by_default: true
+  use_categorical_for: ["donut", "pie", "stacked-bar", "multi-series-line"]
+
+responsive:
+  hide_below: []
+  table_scroll: "x"
+
+empty_state:
+  text: "Нет данных"
+  subtext: ""

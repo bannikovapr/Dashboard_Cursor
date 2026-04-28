@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/dashboard.schema.json",
+  "title": "Dashboard Data Contract",
+  "description": "Универсальная каноничная структура дашборда. Любой источник (Excel/CSV/SQL/API) нормализуется в этот JSON. Фронтенд рендерит UI только из этой структуры. Имена метрик, KPI и графиков задаются пользователем через metric-catalog.yaml и ui-layout.yaml — схема не привязана к конкретному домену.",
+  "type": "object",
+  "required": ["meta", "kpis", "charts", "tables"],
+  "additionalProperties": true,
+  "properties": {
+    "meta": {
+      "type": "object",
+      "description": "Мета-информация о снимке данных.",
+      "required": ["generated_at"],
+      "properties": {
+        "generated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Время генерации снимка (ISO 8601)."
+        },
+        "source": {
+          "type": "string",
+          "description": "Человекочитаемое описание источника (напр. 'Excel: 4 файла', 'Postgres: orders')."
+        },
+        "period": {
+          "type": "object",
+          "description": "Период, покрытый данными.",
+          "properties": {
+            "from": { "type": "string" },
+            "to": { "type": "string" },
+            "granularity": {
+              "type": "string",
+              "enum": ["day", "week", "month", "quarter", "year"],
+              "description": "Базовый шаг времени."
+            }
+          }
+        },
+        "locale": {
+          "type": "string",
+          "description": "BCP-47 локаль (напр. 'ru-RU', 'en-US'). Определяет формат чисел и дат на фронте."
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO-4217, если есть денежные метрики (напр. 'RUB', 'USD')."
+        },
+        "version": {
+          "type": "string",
+          "description": "Версия контракта, к которому сгенерирован файл (напр. '1.0')."
+        }
+      }
+    },
+
+    "kpis": {
+      "type": "object",
+      "description": "Плоский словарь агрегированных KPI. Ключ — id из metric-catalog.yaml. Значение — число или объект с value/hint.",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "number" },
+          { "type": "null" },
+          {
+            "type": "object",
+            "required": ["value"],
+            "properties": {
+              "value": { "type": ["number", "null"] },
+              "unit": { "type": "string" },
+              "hint": {
+                "type": "string",
+                "description": "Короткое пояснение под карточкой (напр. 'мес.', 'за 12 мес.')."
+              },
+              "status": {
+                "type": "string",
+                "enum": ["target", "standard", "below", "none"],
+                "description": "Зона KPI: зелёный/жёлтый/красный/без статуса."
+              },
+              "delta": {
+                "type": "object",
+                "description": "Динамика к предыдущему периоду.",
+                "properties": {
+                  "abs": { "type": "number" },
+                  "pct": { "type": "number" }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+
+    "charts": {
+      "type": "object",
+      "description": "Словарь чартовых наборов данных. Ключ — id серии из ui-layout.yaml. Значение — либо массив объектов (series), либо ссылка на изображение.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "array",
+            "description": "Табличные данные для чарта. Каждый элемент — точка/категория.",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          {
+            "type": "object",
+            "description": "Мульти-серия: категории + массив серий.",
+            "properties": {
+              "categories": {
+                "type": "array",
+                "items": { "type": ["string", "number"] }
+              },
+              "series": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["name", "data"],
+                  "properties": {
+                    "name": { "type": "string" },
+                    "data": {
+                      "type": "array",
+                      "items": { "type": ["number", "null"] }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Ссылка на готовое изображение (если данные приходят как картинка).",
+            "required": ["image"],
+            "properties": {
+              "image": {
+                "type": "string",
+                "description": "Относительный путь к файлу изображения."
+              },
+              "alt": { "type": "string" }
+            }
+          }
+        ]
+      }
+    },
+
+    "tables": {
+      "type": "object",
+      "description": "Словарь табличных наборов. Ключ — id таблицы из ui-layout.yaml. Значение — массив строк-объектов.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+
+    "analysis": {
+      "type": "object",
+      "description": "Производные аналитические срезы: топы, выбросы, лидеры, пиковые месяцы и т.п. Необязательный раздел.",
+      "additionalProperties": true
+    },
+
+    "datasets": {
+      "type": "object",
+      "description": "Плоские нормализованные наборы данных для AI-агента (см. skills/agent-tools). Ключ — id датасета, значение — массив строк.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,67 @@
+version: "1.0"
+default_period: "last_12_months"
+
+kpis:
+  - id: total_revenue
+    label: "Общая выручка"
+    unit: "USD"
+    description: "Сумма оплаченных заказов за период."
+    formula: "sum(orders.amount) where orders.status = 'paid'"
+    dataset: "orders"
+    thresholds:
+      target:   "> baseline * 1.05"
+      standard: "baseline * 0.95 .. baseline * 1.05"
+      below:    "< baseline * 0.95"
+    format: { style: "currency", compact: true }
+
+  - id: active_customers
+    label: "Активных клиентов"
+    unit: "шт"
+    formula: "distinct_count(orders.customer_name)"
+    dataset: "orders"
+    thresholds:
+      target:   "> 300"
+      standard: "150 .. 300"
+      below:    "< 150"
+    format: { style: "number", compact: false }
+
+  - id: avg_order_value
+    label: "Средний чек"
+    unit: "USD"
+    formula: "sum(orders.amount) / count(orders)"
+    dataset: "orders"
+    thresholds:
+      target:   "> baseline * 1.1"
+      standard: "baseline * 0.9 .. baseline * 1.1"
+      below:    "< baseline * 0.9"
+    format: { style: "currency" }
+
+  - id: refund_rate
+    label: "Доля возвратов"
+    unit: "%"
+    formula: "count(orders where status='refunded') / count(orders)"
+    dataset: "orders"
+    thresholds:
+      target:   "< 0.02"
+      standard: "0.02 .. 0.05"
+      below:    "> 0.05"
+    format: { style: "percent", decimals: 1 }
+
+series:
+  - id: revenue_monthly
+    label: "Выручка по месяцам"
+    x: { field: "month", kind: "time" }
+    y: { field: "total", unit: "USD" }
+    dataset: "revenue_monthly"
+    forecastable: true
+
+  - id: orders_by_channel
+    label: "Заказы по каналам"
+    x: { field: "channel", kind: "category" }
+    y: { field: "count", unit: "шт" }
+    dataset: "orders_by_channel"
+
+glossary:
+  AOV: "средний чек"
+  paid: "оплачен"
+  refunded: "возврат"

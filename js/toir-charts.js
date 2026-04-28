@@ -29,6 +29,8 @@
 
   function chartLayout(height, chartType) {
     const b = baseOpts();
+    const tabletHeight = Math.max(220, Math.round(height * 0.9));
+    const phoneHeight = Math.max(200, Math.round(height * 0.8));
     return {
       ...b,
       chart: {
@@ -39,6 +41,31 @@
         redrawOnParentResize: true,
         redrawOnWindowResize: true,
       },
+      legend: {
+        ...(b.legend || {}),
+        position: "top",
+      },
+      responsive: [
+        {
+          breakpoint: 992,
+          options: {
+            chart: { height: tabletHeight },
+            legend: { position: "bottom", fontSize: "10px" },
+            xaxis: { labels: { rotate: -20, hideOverlappingLabels: true, trim: true } },
+            yaxis: { labels: { maxWidth: 180 } },
+          },
+        },
+        {
+          breakpoint: 576,
+          options: {
+            chart: { height: phoneHeight },
+            legend: { position: "bottom", fontSize: "9px" },
+            xaxis: { labels: { rotate: 0, hideOverlappingLabels: true, trim: true, maxHeight: 52 } },
+            yaxis: { labels: { maxWidth: 140, style: { fontSize: "11px" } } },
+            grid: { padding: { left: 4, right: 0 } },
+          },
+        },
+      ],
     };
   }
 
@@ -437,6 +464,96 @@
     return t.length > max ? `${t.slice(0, max - 1)}…` : t;
   }
 
+  function formatCompactNumber(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return "0";
+    const abs = Math.abs(num);
+    if (abs >= 1e9) return `${(num / 1e9).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} млрд`;
+    if (abs >= 1e6) return `${(num / 1e6).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} млн`;
+    if (abs >= 1e3) return `${(num / 1e3).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} тыс`;
+    return num.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+  }
+
+  function renderAgentChart(spec, targetSel, height = 260) {
+    const el = document.querySelector(targetSel);
+    if (!el) return;
+    dispose(targetSel);
+
+    const type = spec.chartType || "bar";
+    const categories = (spec.categories || []).map((c) => shortenLabel(c, 30));
+    const palette = categoricalPalette();
+    const series = spec.series || [];
+
+    const isPie = type === "pie" || type === "donut";
+
+    if (isPie) {
+      const data = series[0]?.data || [];
+      const opts = {
+        ...chartLayout(height, type),
+        chart: { ...chartLayout(height, type).chart, type },
+        labels: categories,
+        series: data,
+        colors: palette.slice(0, data.length),
+        legend: { position: "bottom", fontSize: "10px" },
+      };
+      apexBySelector[targetSel] = new ApexCharts(el, opts);
+      apexBySelector[targetSel].render();
+      return;
+    }
+
+    const isHorizontalBar = type === "bar" && categories.length > 6;
+
+    const opts = {
+      ...chartLayout(height, isHorizontalBar ? "bar" : type),
+      chart: {
+        ...chartLayout(height, type).chart,
+        type: type === "area" ? "area" : type === "line" ? "line" : "bar",
+      },
+      plotOptions: isHorizontalBar
+        ? { bar: { horizontal: true, barHeight: "60%", borderRadius: 3 } }
+        : { bar: { columnWidth: "55%", borderRadius: 3 } },
+      xaxis: {
+        ...chartLayout(height, type).xaxis,
+        categories,
+        labels: {
+          style: { colors: "#64748b", fontSize: "10px" },
+          hideOverlappingLabels: true,
+          rotate: isHorizontalBar ? 0 : -35,
+          maxHeight: 80,
+        },
+      },
+      yaxis: {
+        labels: {
+          formatter: (v) => formatCompactNumber(v),
+        },
+      },
+      series: series.map((s, i) => ({
+        name: s.name || `Серия ${i + 1}`,
+        data: s.data || [],
+      })),
+      tooltip: {
+        y: {
+          formatter: (v) => Number(v).toLocaleString("ru-RU", { maximumFractionDigits: 2 }),
+        },
+      },
+      colors: palette.slice(0, series.length || 1),
+      stroke:
+        type === "line" || type === "area"
+          ? {
+              width: 2,
+              curve: "smooth",
+              dashArray: series.map((s) =>
+                /нижн|верхн|интервал/i.test(String(s?.name || "")) ? 6 : 0
+              ),
+            }
+          : {},
+      fill: type === "area" ? { type: "gradient", gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05 } } : {},
+    };
+
+    apexBySelector[targetSel] = new ApexCharts(el, opts);
+    apexBySelector[targetSel].render();
+  }
+
   global.ToirCharts = {
     renderStructureByClass,
     renderCostsByMonth,
@@ -451,6 +568,7 @@
     renderMtbfTop,
     renderMttrTop,
     renderMaterialLaborStacked,
+    renderAgentChart,
     resizeAll,
   };
 })(typeof window !== "undefined" ? window : globalThis);

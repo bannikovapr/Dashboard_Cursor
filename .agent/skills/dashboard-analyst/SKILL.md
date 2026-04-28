@@ -1,6 +1,6 @@
 ---
 name: dashboard-analyst
-description: Use this skill when the user needs TOIR analytics from 7 separate Excel reports (or legacy single workbook), mapping into one `data/toir.json` for dashboarding. Triggers: "проанализируй ТОиР", "собери toir.json", "маппинг источников", "7 отчетов для дашборда".
+description: Use this skill when the user needs TOIR analytics from 7 separate Excel reports, mapping into one `data/toir.json` for dashboarding. Triggers: "проанализируй ТОиР", "собери toir.json", "маппинг источников", "7 отчетов для дашборда".
 ---
 
 # Dashboard Analyst
@@ -24,9 +24,9 @@ description: Use this skill when the user needs TOIR analytics from 7 separate E
 
 ## Совместимость
 
-- Если есть все 7 файлов — работай только по ним.
-- Если набора нет целиком, допускается fallback на legacy-файл `Cursor_test2.xlsx`.
-- В `meta.source` фиксируй фактический режим загрузки (`7 файлов...` или `Cursor_test2.xlsx`).
+- Работай только по 7 отдельным файлам.
+- Если набора нет целиком — возвращай ошибку о недостающих отчетах.
+- В `meta.source` фиксируй режим загрузки как `7 файлов отчетов (*.xlsx)`.
 
 ## Цель
 

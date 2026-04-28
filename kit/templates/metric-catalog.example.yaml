@@ -1,0 +1,94 @@
+# metric-catalog.yaml
+#
+# Каталог метрик (KPI) дашборда. Здесь вы описываете БИЗНЕС-СМЫСЛ каждого показателя:
+# id, человеческое название, единицу, формулу, пороги подсветки и связь с датасетом.
+#
+# Агент использует этот файл чтобы:
+#   - сгенерировать агрегацию в dashboard.json -> kpis.*
+#   - сгенерировать UI-карточки KPI
+#   - подставить цветовые статусы (зелёный/жёлтый/красный)
+#
+# ВАЖНО: kpi.id должен совпадать с ключом в kpis словаря dashboard.json.
+# Не привязывайтесь к конкретному домену — ниже лишь один из возможных примеров (продажи).
+
+version: "1.0"
+
+# Базовый период, если в отдельной метрике не указано иное.
+default_period: "last_12_months"  # last_n_days:30 | last_n_weeks | last_n_months | ytd | custom
+
+# Набор KPI для верхнего ряда дашборда. 4, 6 или 8 карточек — на ваше усмотрение.
+kpis:
+  - id: total_revenue
+    label: "Общая выручка"
+    unit: "USD"
+    description: "Сумма оплаченных заказов за период."
+    formula: "sum(orders.amount) where orders.status = 'paid'"
+    dataset: "orders"
+    # Пороги: зелёный = выше целевого, красный = ниже минимального.
+    # Можно задавать абсолютом, процентом, выражением от baseline (средний полный срез).
+    thresholds:
+      target: "> baseline * 1.05"
+      standard: "baseline * 0.95 .. baseline * 1.05"
+      below: "< baseline * 0.95"
+    format:
+      style: "currency"     # number | currency | percent | duration
+      compact: true         # 1.2M вместо 1 200 000
+
+  - id: active_customers
+    label: "Активных клиентов"
+    unit: "шт"
+    description: "Уникальные клиенты с заказом за период."
+    formula: "distinct_count(orders.customer_id)"
+    dataset: "orders"
+    thresholds:
+      target: "> 500"
+      standard: "300 .. 500"
+      below: "< 300"
+    format: { style: "number", compact: false }
+
+  - id: avg_order_value
+    label: "Средний чек"
+    unit: "USD"
+    description: "Выручка / количество заказов."
+    formula: "sum(orders.amount) / count(orders)"
+    dataset: "orders"
+    thresholds:
+      target: "> baseline * 1.1"
+      standard: "baseline * 0.9 .. baseline * 1.1"
+      below: "< baseline * 0.9"
+    format: { style: "currency", compact: false }
+
+  - id: refund_rate
+    label: "Доля возвратов"
+    unit: "%"
+    description: "Возвраты / все заказы."
+    formula: "count(orders where status='refunded') / count(orders)"
+    dataset: "orders"
+    # Здесь порядок обратный: низкий процент = хорошо.
+    thresholds:
+      target: "< 0.02"
+      standard: "0.02 .. 0.05"
+      below: "> 0.05"
+    format: { style: "percent", decimals: 1 }
+
+# Метрики-серии (не-скалярные). Используются в charts.* и в forecast.
+series:
+  - id: revenue_monthly
+    label: "Выручка по месяцам"
+    x: { field: "month", kind: "time" }
+    y: { field: "total", unit: "USD" }
+    dataset: "revenue_monthly"
+    forecastable: true             # разрешить прогноз forecast_metric по этому ряду
+
+  - id: orders_by_channel
+    label: "Заказы по каналам"
+    x: { field: "channel", kind: "category" }
+    y: { field: "count", unit: "шт" }
+    dataset: "orders_by_channel"
+
+# Словарь терминов для ассистента (чтобы он говорил как пользователь).
+# Ключ — внутренний id, значение — как показывать в UI и в ответах.
+glossary:
+  AOV: "средний чек"
+  CAC: "стоимость привлечения клиента"
+  LTV: "пожизненная ценность клиента"

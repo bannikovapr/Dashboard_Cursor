@@ -1,0 +1,61 @@
+# Пример brand.config.yaml для reference-проекта (ТОиР).
+
+version: "1.0"
+
+app:
+  title: "Стратегический дашборд ТОИР"
+  subtitle: ""
+  favicon: "assets/favicon.ico"
+  logo:
+    src: "assets/desnol-userpic.png"
+    width: 90
+    height: 90
+    alt: "Desnol"
+
+i18n:
+  locale: "ru-RU"
+  currency: "RUB"
+  fallback_locale: "en-US"
+
+palette:
+  primary: "#3EA36A"
+  accent: "#2F855A"
+  bg: "#F7F8FA"
+  surface: "#FFFFFF"
+  text: "#1F2937"
+  muted: "#6B7280"
+  border: "#E5E7EB"
+  status:
+    target: "#16A34A"
+    standard: "#D97706"
+    below: "#DC2626"
+  chart:
+    bar: "#3EA36A"
+    line: "#2F855A"
+    categorical: ["#3EA36A", "#2F855A", "#4F46E5", "#D97706", "#0EA5E9", "#DC2626", "#9333EA"]
+
+typography:
+  font_family: "Montserrat, Inter, system-ui, sans-serif"
+  base_size: "14px"
+  headings_weight: 600
+
+breakpoints:
+  mobile_s: "360px"
+  mobile: "390px"
+  tablet: "768px"
+  laptop: "1024px"
+  desktop: "1366px"
+  wide: "1920px"
+
+layout:
+  mode: "main_plus_sidebar"
+  sidebar_breakpoint: "1440px"
+  fixed_width: null
+
+assistant:
+  enabled: true
+  name: "AI-ассистент"
+  greeting: "Задайте вопрос по данным дашборда."
+  placeholder: "Задайте вопрос, например: \"Какой общий объем затрат?\""
+  answer_format: "fact_conclusion_action"
+  response_language: "ru"

@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+
+echo "[pre-commit] Running secret hygiene checks..."
+node scripts/hygiene-check.js --staged
+status=$?
+if [ "$status" -ne 0 ]; then
+  echo "[pre-commit] Blocked: hygiene check failed."
+  exit "$status"
+fi
+
+echo "[pre-commit] OK"
+exit 0
+

@@ -1,0 +1,21 @@
+order_id,customer_name,channel,status,amount_usd,created_at
+1001,Acme Corp,Direct,paid,1250.00,2025-05-12
+1002,Globex,Partner,paid,980.50,2025-05-14
+1003,Initech,Direct,refunded,420.00,2025-05-18
+1004,Umbrella,Direct,paid,2150.75,2025-06-03
+1005,Acme Corp,Partner,paid,300.00,2025-06-11
+1006,Stark Industries,Direct,paid,5600.00,2025-06-20
+1007,Wayne Enterprises,Partner,paid,1780.25,2025-07-01
+1008,Globex,Direct,paid,640.00,2025-07-07
+1009,Initech,Partner,paid,1190.00,2025-07-15
+1010,Tyrell Corp,Direct,paid,2890.00,2025-08-02
+1011,Acme Corp,Direct,refunded,560.00,2025-08-10
+1012,Umbrella,Partner,paid,430.00,2025-08-19
+1013,Stark Industries,Direct,paid,4780.50,2025-09-05
+1014,Wayne Enterprises,Partner,paid,2100.00,2025-09-14
+1015,Globex,Direct,paid,875.25,2025-09-22
+1016,Initech,Direct,paid,1320.00,2025-10-04
+1017,Tyrell Corp,Partner,paid,950.00,2025-10-11
+1018,Acme Corp,Direct,paid,2450.00,2025-10-25
+1019,Stark Industries,Direct,paid,6300.00,2025-11-08
+1020,Wayne Enterprises,Direct,refunded,880.00,2025-11-19

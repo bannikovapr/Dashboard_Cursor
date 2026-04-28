@@ -16,7 +16,7 @@
   <body>
     <div class="layout">
       <div class="layout-main">
-        <header class="card header-card" style="padding: 18px 20px; margin-bottom: 14px">
+        <header class="card header-card dashboard-header">
           <div class="top-header">
             <div class="brand-band">
               <img
@@ -110,7 +110,7 @@
           </div>
         </div>
 
-        <div class="charts-area" style="margin-top: 18px">
+        <div class="charts-area charts-area-main">
           <div id="panel-charts-summary" class="panel-charts" data-panel="summary">
             <div class="card chart-card chart-hero">
               <div class="chart-title-row">
@@ -157,6 +157,16 @@
                 <div class="chart-sub">В текущем срезе фильтров</div>
                 <div class="chart-box" id="chartClassCostDonut"></div>
               </div>
+              <div class="card chart-card" id="personnelDlpSection" hidden>
+                <div class="chart-title">Ремонтные работы сотрудников за год (трудозатраты)</div>
+                <div class="chart-sub" id="personnelDlpSub">Источник: data/personnel_dlp_test.json</div>
+                <div class="chart-box chart-box--personnel-dlp" id="chartPersonnelDlp"></div>
+              </div>
+              <div class="card chart-card" id="personnelOrgSection" hidden>
+                <div class="chart-title">Анализ использования персонала по организациям</div>
+                <div class="chart-sub" id="personnelOrgSub">Источник: data/personnel_org_usage.json</div>
+                <div class="chart-box chart-box--personnel-dlp" id="chartPersonnelOrg"></div>
+              </div>
             </div>
           </div>
 
@@ -194,7 +204,7 @@
               </div>
               <div class="card chart-card">
                 <div class="chart-title">Процент износа</div>
-                <div class="chart-sub" id="chartWearSub" style="display: none"></div>
+                <div class="chart-sub chart-sub-hidden" id="chartWearSub"></div>
                 <div class="chart-box chart-box--image" id="chartWearImage"></div>
               </div>
               <div class="card chart-card">
@@ -205,6 +215,8 @@
             </div>
           </div>
         </div>
+
+        <div id="agentWorkspace" class="agent-workspace" hidden></div>
 
         <div class="tables-grid" id="tablesRow">
           <div class="card table-card">
@@ -253,16 +265,20 @@
             </div>
           </div>
         </div>
-
         <footer class="footer-note" id="footerSource">Загрузка…</footer>
       </div>
 
       <aside class="card ai-panel layout-sidebar" aria-label="AI-ассистент">
         <h2>AI-ассистент</h2>
-        <p class="ai-desc">Этот блок анализирует данные дашборда и отвечает по формату факт → вывод → действие. Ключ облачной модели хранится только на сервере.</p>
+        <div class="ai-mode-toggle" id="aiModeToggle">
+          <button type="button" class="ai-mode-btn active" data-mode="agent">Агент</button>
+          <button type="button" class="ai-mode-btn" data-mode="chat">Быстрый ответ</button>
+        </div>
+        <p class="ai-desc" id="aiDesc">Агент анализирует данные, выполняет вычисления и строит графики/таблицы.</p>
         <div class="ai-log" id="aiLog"></div>
+        <div id="aiArtifacts" class="ai-artifacts" hidden></div>
         <div class="ai-input-row">
-          <textarea id="aiInput" placeholder='Задайте вопрос, например: "Какой общий объем затрат?"' rows="3"></textarea>
+          <textarea id="aiInput" placeholder='Задайте вопрос, например: "Покажи топ-5 по затратам в виде графика"' rows="3"></textarea>
           <button type="button" class="btn-cta" id="aiSend">Спросить</button>
         </div>
       </aside>

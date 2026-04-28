@@ -1,0 +1,112 @@
+# Пример заполнения metric-catalog.yaml для reference-проекта (ТОиР).
+# 8 KPI + временные ряды с прогнозом.
+
+version: "1.0"
+default_period: "last_12_months"
+
+kpis:
+  - id: kpiTotal
+    label: "Общие затраты ТОИР"
+    unit: "₽"
+    formula: "sum(costs_monthly.total)"
+    dataset: "costs_monthly"
+    thresholds:
+      target: "< baseline * 0.95"
+      standard: "baseline * 0.95 .. baseline * 1.05"
+      below: "> baseline * 1.05"
+    format: { style: "currency", compact: true }
+
+  - id: kpiTop3
+    label: "Доля топ-3 в затратах"
+    unit: "%"
+    formula: "sum(top(3, equipment_costs, total)) / sum(equipment_costs.total)"
+    dataset: "equipment_costs"
+    thresholds:
+      target: "< 0.4"
+      standard: "0.4 .. 0.6"
+      below: "> 0.6"
+    format: { style: "percent", decimals: 0 }
+
+  - id: kpiAvgUnit
+    label: "Средняя стоимость на единицу"
+    unit: "₽"
+    formula: "sum(equipment_costs.total) / count(equipment_costs)"
+    dataset: "equipment_costs"
+    format: { style: "currency", compact: true }
+
+  - id: kpiDown
+    label: "Общий простой"
+    unit: "ч"
+    formula: "sum(ktg.total_downtime_h)"
+    dataset: "ktg"
+    format: { style: "number", compact: false }
+
+  - id: kpiFails
+    label: "Всего отказов"
+    unit: "шт"
+    formula: "sum(failure_causes.count)"
+    dataset: "failure_causes"
+    format: { style: "number" }
+
+  - id: kpiKtg
+    label: "Средний КТГ"
+    unit: "%"
+    formula: "avg(ktg.avg_ktg)"
+    dataset: "ktg"
+    thresholds:
+      target: "> 0.95"
+      standard: "0.90 .. 0.95"
+      below: "< 0.90"
+    format: { style: "percent", decimals: 1 }
+
+  - id: kpiPerEq
+    label: "Отказов на единицу"
+    unit: "шт"
+    formula: "sum(failure_causes.count) / count(defects)"
+    dataset: "defects"
+    format: { style: "number", decimals: 2 }
+
+  - id: kpiMtbf
+    label: "Средняя СННО"
+    unit: "ч"
+    formula: "avg(mtbf.mtbf_h)"
+    dataset: "mtbf"
+    thresholds:
+      target: "> 1000"
+      standard: "500 .. 1000"
+      below: "< 500"
+    format: { style: "number", compact: false }
+
+series:
+  - id: costs_monthly
+    label: "Динамика затрат"
+    x: { field: "month", kind: "time" }
+    y: { field: "total", unit: "₽" }
+    dataset: "costs_monthly"
+    forecastable: true
+
+  - id: material_h
+    label: "Материалы по месяцам"
+    x: { field: "month", kind: "time" }
+    y: { field: "material_h", unit: "ч" }
+    dataset: "material_labor"
+    forecastable: true
+
+  - id: labor_h
+    label: "Трудозатраты по месяцам"
+    x: { field: "month", kind: "time" }
+    y: { field: "labor_h", unit: "ч" }
+    dataset: "material_labor"
+    forecastable: true
+
+  - id: class_costs
+    label: "Затраты по классам"
+    x: { field: "class", kind: "category" }
+    y: { field: "total", unit: "₽" }
+    dataset: "equipment_costs"
+    forecastable: true
+
+glossary:
+  СННО: "наработка на отказ (MTBF)"
+  СВВ: "среднее время восстановления (MTTR)"
+  КТГ: "коэффициент технической готовности"

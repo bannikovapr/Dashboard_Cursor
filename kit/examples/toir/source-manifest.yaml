@@ -1,0 +1,121 @@
+# Пример заполнения source-manifest.yaml для reference-проекта (ТОиР).
+# Показывает, как 7 разнородных Excel-файлов превращаются в один dashboard.json.
+
+version: "1.0"
+
+defaults:
+  encoding: "utf-8"
+  tz: "Europe/Moscow"
+  missing: "null"
+
+canonical_datasets:
+  - id: costs_monthly
+    fields: [month, total]
+  - id: failure_causes
+    fields: [cause, count]
+  - id: material_labor
+    fields: [month, material_h, labor_h]
+  - id: mtbf
+    fields: [equipment, mtbf_h]
+  - id: mttr
+    fields: [equipment, mttr_h]
+  - id: equipment_costs
+    fields: [name, class, total, months]
+  - id: ktg
+    fields: [name, class, avg_ktg, total_downtime_h, monthly_ktg]
+  - id: defects
+    fields: [name, class, count]
+  - id: analysis_leaders
+    fields: [equipment, total_rub]
+  - id: analysis_causes
+    fields: [cause, count]
+
+sources:
+
+  - id: costs_xlsx
+    kind: excel
+    path: "data/Фактические затраты по ОР.xlsx"
+    sheet: "Фактические затраты по ОР"
+    mapping:
+      - to: costs_monthly
+        columns: { month: "Месяц", total: "Сумма, руб" }
+      - to: equipment_costs
+        columns:
+          name:  "Оборудование"
+          class: "Класс"
+          total: "Итого, руб"
+          months: "Распределение по месяцам"
+
+  - id: failures_xlsx
+    kind: excel
+    path: "data/Анализ отказов.xlsx"
+    sheet: "Анализ отказов"
+    mapping:
+      - to: failure_causes
+        columns: { cause: "Причина", count: "Количество" }
+      - to: defects
+        columns:
+          name:  "Оборудование"
+          class: "Класс"
+          count: "Количество отказов"
+
+  - id: ktg_xlsx
+    kind: excel
+    path: "data/КТГ.xlsx"
+    sheet: "КТГ"
+    mapping:
+      - to: ktg
+        columns:
+          name: "Оборудование"
+          class: "Класс"
+          avg_ktg: "Средний КТГ"
+          total_downtime_h: "Суммарный простой, ч"
+          monthly_ktg: "Помесячно"
+
+  - id: mtbf_xlsx
+    kind: excel
+    path: "data/Наработка на отказ.xlsx"
+    sheet: "Наработка на отказ"
+    mapping:
+      - to: mtbf
+        columns: { equipment: "Оборудование", mtbf_h: "Наработка, ч" }
+
+  - id: downtime_xlsx
+    kind: excel
+    path: "data/Простой.xlsx"
+    sheet: "Простой"
+    mapping:
+      - to: mttr
+        columns: { equipment: "Оборудование", mttr_h: "Время восстановления, ч" }
+      - to: material_labor
+        columns:
+          month: "Месяц"
+          material_h: "Материалы, ч"
+          labor_h: "Трудозатраты, ч"
+
+  - id: wear_xlsx
+    kind: excel
+    path: "data/Процент износа.xlsx"
+    sheet: "Процент износа"
+    # Этот источник поставляет картинку (отчёт в виде изображения) в charts.wearImage.
+    mapping: []
+
+  - id: equipment_xlsx
+    kind: excel
+    path: "data/Список оборудования.xlsx"
+    sheet: "Список оборудования"
+    # Эталонный справочник для классификации (classifyClass).
+    mapping: []
+
+validation:
+  required_datasets: [costs_monthly, failure_causes, equipment_costs, ktg, mtbf, mttr]
+  required_fields:
+    costs_monthly:    [month, total]
+    failure_causes:   [cause, count]
+    equipment_costs:  [name, total]
+    ktg:              [name, avg_ktg]
+    mtbf:             [equipment, mtbf_h]
+    mttr:             [equipment, mttr_h]
+  min_rows:
+    costs_monthly: 3
+    failure_causes: 1

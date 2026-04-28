@@ -1,0 +1,66 @@
+version: "1.0"
+
+defaults:
+  encoding: "utf-8"
+  tz: "UTC"
+  missing: "null"
+  trim_strings: true
+
+canonical_datasets:
+  - id: orders
+    fields: [order_id, customer_name, channel, status, amount, created_at]
+  - id: revenue_monthly
+    fields: [month, total]
+  - id: orders_by_channel
+    fields: [channel, count]
+  - id: top_customers
+    fields: [customer_name, orders, revenue]
+
+sources:
+  - id: orders_csv
+    kind: csv
+    path: "data/orders.csv"
+    delimiter: ","
+    mapping:
+      - to: orders
+        columns:
+          order_id:      "order_id"
+          customer_name: "customer_name"
+          channel:       "channel"
+          status:        "status"
+          amount:        "amount_usd"
+          created_at:    "created_at"
+        transforms:
+          - { field: status, lowercase: true }
+          - { field: amount, to_number: true }
+          - { field: created_at, to_datetime: true }
+
+derived_datasets:
+  - id: revenue_monthly
+    from: orders
+    where: { status: "paid" }
+    group_by: { month: "month(created_at)" }
+    aggregate: { total: "sum(amount)" }
+
+  - id: orders_by_channel
+    from: orders
+    group_by: { channel: "channel" }
+    aggregate: { count: "count()" }
+
+  - id: top_customers
+    from: orders
+    where: { status: "paid" }
+    group_by: { customer_name: "customer_name" }
+    aggregate:
+      orders: "count()"
+      revenue: "sum(amount)"
+    order_by: { field: "revenue", dir: "desc" }
+    limit: 10
+
+validation:
+  required_datasets: [orders, revenue_monthly]
+  required_fields:
+    orders: [order_id, amount, created_at]
+    revenue_monthly: [month, total]
+  min_rows:
+    orders: 10

@@ -1,0 +1,75 @@
+version: "1.0"
+
+header:
+  show_logo: true
+  show_title: true
+  chips:
+    - { id: period,  label: "Период",    bind: "meta.period" }
+    - { id: updated, label: "Обновлено", bind: "meta.generated_at" }
+    - { id: rows,    label: "Записей",   bind: "analysis.row_count" }
+
+filters:
+  - id: period
+    label: "Период"
+    kind: "select"
+    options:
+      - { value: "all",   label: "Все 12 месяцев" }
+      - { value: "ytd",   label: "С начала года" }
+      - { value: "last3", label: "Последние 3 месяца" }
+    default: "all"
+
+  - id: channel
+    label: "Канал"
+    kind: "select"
+    options_from: { dataset: "orders", field: "channel", add_all: true }
+    default: "__all__"
+
+kpi_block:
+  columns_desktop: 4
+  columns_tablet: 2
+  columns_mobile: 1
+  cards:
+    - { ref: total_revenue }
+    - { ref: active_customers }
+    - { ref: avg_order_value }
+    - { ref: refund_rate }
+
+tabs:
+
+  - id: summary
+    label: "Сводка"
+    charts:
+      - { id: chartRevenueTrend, kind: "line",  title: "Динамика выручки",     bind: "charts.revenue_monthly", x: "month", y: "total" }
+      - { id: chartChannels,     kind: "donut", title: "Структура по каналам", bind: "charts.orders_by_channel", x: "channel", y: "count" }
+
+  - id: detail
+    label: "Детализация"
+    tables:
+      - id: tblTopCustomers
+        title: "Топ клиентов"
+        bind: "tables.top_customers"
+        columns:
+          - { field: "customer_name", label: "Клиент" }
+          - { field: "orders",        label: "Заказов", align: "right" }
+          - { field: "revenue",       label: "Выручка", align: "right", format: "currency" }
+
+  - id: forecast
+    label: "Прогноз"
+    charts:
+      - id: chartRevenueForecast
+        kind: "line"
+        title: "Прогноз выручки"
+        bind: "charts.revenue_forecast"
+        supports: ["actual", "forecast", "confidence_interval"]
+
+chart_policy:
+  mono_by_default: true
+  use_categorical_for: ["donut", "pie", "stacked-bar", "multi-series-line"]
+
+responsive:
+  hide_below: []
+  table_scroll: "x"
+
+empty_state:
+  text: "Нет данных"
+  subtext: "Попробуйте изменить фильтры или подгрузить свежий снимок."
