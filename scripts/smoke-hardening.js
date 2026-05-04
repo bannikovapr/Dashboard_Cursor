@@ -33,7 +33,7 @@ function freshRequire(relPath) {
   return require(abs);
 }
 
-function withEnv(patch, fn) {
+async function withEnv(patch, fn) {
   const keys = Object.keys(patch || {});
   const prev = {};
   for (const key of keys) {
@@ -43,7 +43,7 @@ function withEnv(patch, fn) {
     else process.env[key] = String(nextValue);
   }
   try {
-    return fn();
+    return await fn();
   } finally {
     for (const key of keys) {
       if (prev[key] == null) delete process.env[key];
@@ -111,10 +111,25 @@ function testProviderFailure() {
   );
 }
 
-const FIO_RULE_IDS = ["morph_fio", "dictionary_employee", "ner_person", "fio"];
-const ORG_RULE_IDS = ["dictionary_org", "structural_org", "ner_org", "company_name"];
+// New ML-first ruleIds + backward-compat aliases for transitional smoke runs.
+const FIO_RULE_IDS = ["ml_person", "ner_person", "morph_fio", "dictionary_employee", "fio"];
+const ORG_RULE_IDS = ["ml_org", "ner_org", "dictionary_org", "structural_org", "company_name"];
 const DEPT_RULE_IDS = ["dictionary_department", "department_name"];
-const LOC_RULE_IDS = ["dictionary_installation", "structural_location", "ner_location", "installation_name"];
+const LOC_RULE_IDS = ["ml_location", "ner_location", "dictionary_installation", "structural_location", "installation_name"];
+const EMAIL_RULE_IDS = ["regex_email", "ml_email", "email"];
+const PHONE_RULE_IDS = ["regex_phone", "ml_phone", "phone"];
+const EQUIPMENT_CODE_RULE_IDS = ["regex_equipment_code", "ml_equipment_code", "equipment_code_composite"];
+const SECRET_RULE_IDS = [
+  "regex_secret_openrouter_api_key",
+  "regex_secret_generic_api_key",
+  "regex_secret_bearer_token",
+  "regex_secret_pem",
+  "regex_secret_aws_access_key",
+  "regex_secret_jwt",
+  "ml_secret",
+  "openrouter_api_key",
+  "private_key",
+];
 
 function totalForRules(byType, ruleIds) {
   let total = 0;
@@ -134,16 +149,17 @@ async function testDlpNegativeCases() {
       DLP_ALLOW_EPHEMERAL_KEY: "false",
       DLP_REQUIRE_CONFIGURED_KEY: "true",
       DLP_MASTER_KEY_B64: randomB64Key32(),
-      DLP_DICT_ENABLED: "true",
-      DLP_MORPH_FIO_ENABLED: "true",
-      DLP_STRUCTURAL_ENABLED: "true",
-      DLP_NER_ENABLED: "false",
+      // ML-engine off for deterministic offline smoke; regex backstop still covers
+      // secrets, email, phone, equipment_code.
+      DLP_ML_ENABLED: "false",
+      DLP_ML_FAIL_MODE: "monitor",
+      DLP_REGEX_BACKSTOP_ENABLED: "true",
     },
     async () => {
       freshRequire("server/security/crypto.js");
       // reset detector singleton state across tests
       const det = freshRequire("server/security/detector/index.js");
-      det.init({ force: true });
+      await det.init({ force: true });
       const { createSession } = freshRequire("server/security/dlp-service.js");
       const dlp = createSession({ requestId: crypto.randomUUID() });
       try {
@@ -163,47 +179,26 @@ async function testDlpNegativeCases() {
         };
         const protectedPii = await dlp.protectPayload(piiPayload);
         ensure(protectedPii.ok, "PII should be tokenized, not blocked", protectedPii);
-        ensure((protectedPii.summary?.byType?.phone || 0) >= 1, "phone tokenization did not trigger", protectedPii.summary);
-        ensure((protectedPii.summary?.byType?.email || 0) >= 1, "email tokenization did not trigger", protectedPii.summary);
         ensure(
-          totalForRules(protectedPii.summary?.byType, FIO_RULE_IDS) >= 1,
-          "FIO tokenization did not trigger via hybrid detector",
+          totalForRules(protectedPii.summary?.byType, PHONE_RULE_IDS) >= 1,
+          "phone tokenization did not trigger via regex-backstop",
+          protectedPii.summary
+        );
+        ensure(
+          totalForRules(protectedPii.summary?.byType, EMAIL_RULE_IDS) >= 1,
+          "email tokenization did not trigger via regex-backstop",
           protectedPii.summary
         );
 
-        const domainSensitivePayload = {
-          company: "ООО СибИнк Сервис",
-          department: "Отдел капитального строительства",
-          installation: "Площадка Усть-каменогорская",
-          equipment_code: "INK_SIB_003_COMP_005",
-          equipment_name: "Компрессор центробежный Siemens",
+        const equipmentCodePayload = {
+          text: "Карточка оборудования INK_SIB_003_COMP_005 актуализирована.",
         };
-        const protectedDomainSensitive = await dlp.protectPayload(domainSensitivePayload);
-        ensure(protectedDomainSensitive.ok, "domain-sensitive entities should be tokenized, not blocked", protectedDomainSensitive);
+        const protectedEquipment = await dlp.protectPayload(equipmentCodePayload);
+        ensure(protectedEquipment.ok, "equipment_code payload should not be blocked", protectedEquipment);
         ensure(
-          totalForRules(protectedDomainSensitive.summary?.byType, ORG_RULE_IDS) >= 1,
-          "organization tokenization did not trigger",
-          protectedDomainSensitive.summary
-        );
-        ensure(
-          totalForRules(protectedDomainSensitive.summary?.byType, DEPT_RULE_IDS) >= 1,
-          "department tokenization did not trigger",
-          protectedDomainSensitive.summary
-        );
-        ensure(
-          totalForRules(protectedDomainSensitive.summary?.byType, LOC_RULE_IDS) >= 1,
-          "installation tokenization did not trigger",
-          protectedDomainSensitive.summary
-        );
-        ensure(
-          (protectedDomainSensitive.summary?.byType?.equipment_code_composite || 0) >= 1,
-          "equipment_code_composite tokenization did not trigger",
-          protectedDomainSensitive.summary
-        );
-        ensure(
-          protectedDomainSensitive.payload?.equipment_name === domainSensitivePayload.equipment_name,
-          "generic equipment name should stay unmasked",
-          protectedDomainSensitive.payload
+          totalForRules(protectedEquipment.summary?.byType, EQUIPMENT_CODE_RULE_IDS) >= 1,
+          "equipment_code tokenization did not trigger",
+          protectedEquipment.summary
         );
 
         const genericEquipmentPayload = await dlp.protectPayload({
@@ -223,7 +218,22 @@ async function testDlpNegativeCases() {
         };
         const protectedSecret = await dlp.protectPayload(secretPayload);
         ensure(!protectedSecret.ok, "secret must be blocked", protectedSecret);
-        ensure(protectedSecret.blockedBy === "openrouter_api_key", "blockedBy mismatch", protectedSecret);
+        ensure(
+          SECRET_RULE_IDS.includes(protectedSecret.blockedBy),
+          "blockedBy must be one of secret rule ids",
+          protectedSecret
+        );
+
+        const pemPayload = {
+          text: "PEM:\n-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQ\n-----END PRIVATE KEY-----",
+        };
+        const protectedPem = await dlp.protectPayload(pemPayload);
+        ensure(!protectedPem.ok, "PEM private key must be blocked", protectedPem);
+        ensure(
+          SECRET_RULE_IDS.includes(protectedPem.blockedBy),
+          "PEM blockedBy must be one of secret rule ids",
+          protectedPem
+        );
       } finally {
         dlp.dispose();
       }
@@ -231,29 +241,69 @@ async function testDlpNegativeCases() {
   );
 }
 
-async function testDetectorNerOffFallback() {
+async function testDetectorMlDisabled() {
   return withEnv(
     {
-      DLP_NER_ENABLED: "false",
-      DLP_DICT_ENABLED: "true",
-      DLP_MORPH_FIO_ENABLED: "true",
-      DLP_STRUCTURAL_ENABLED: "true",
+      DLP_ML_ENABLED: "false",
+      DLP_ML_FAIL_MODE: "monitor",
+      DLP_REGEX_BACKSTOP_ENABLED: "true",
     },
     async () => {
       const det = freshRequire("server/security/detector/index.js");
-      det.init({ force: true });
+      await det.init({ force: true });
       const status = det.getRuntimeStatus();
-      ensure(status.layers.dictionary === true, "dictionary layer should be enabled", status);
-      ensure(status.layers.morphFio === true, "morphFio layer should be enabled", status);
-      ensure(status.layers.structural === true, "structural layer should be enabled", status);
-      ensure(status.layers.ner === false, "NER layer should be disabled in fallback test", status);
-      const matches = await det.detect("Сегодня Иванов Иван Иванович подписал документ");
-      ensure(Array.isArray(matches) && matches.length >= 1, "morph FIO should produce a match without NER", matches);
-      const fioFound = matches.some((m) => FIO_RULE_IDS.includes(m.ruleId));
-      ensure(fioFound, "expected FIO rule among detector matches without NER", matches);
+      ensure(status?.ml?.enabled === false, "ML engine should be disabled for fallback test", status);
+      ensure(status?.regexBackstop?.enabled === true, "regex backstop should remain enabled", status);
+      const matches = await det.detect("ivanov@example.com и +7 999 123 45 67");
+      ensure(Array.isArray(matches) && matches.length >= 2, "regex backstop should detect email and phone", matches);
+      const ids = new Set(matches.map((m) => m.ruleId));
+      ensure(EMAIL_RULE_IDS.some((r) => ids.has(r)), "regex_email expected", matches);
+      ensure(PHONE_RULE_IDS.some((r) => ids.has(r)), "regex_phone expected", matches);
       return {
-        nerEnabled: status.layers.ner,
+        mlEnabled: status?.ml?.enabled,
+        backstop: status?.regexBackstop?.enabled,
         sampleMatches: matches.length,
+      };
+    }
+  );
+}
+
+async function testDetectorFailClosedGate() {
+  return withEnv(
+    {
+      DLP_ENABLED: "true",
+      DLP_KEY_PROVIDER: "env",
+      DLP_REQUIRE_CONFIGURED_KEY: "true",
+      DLP_ALLOW_EPHEMERAL_KEY: "false",
+      DLP_MASTER_KEY_B64: randomB64Key32(),
+      // ML enabled but unable to load (no real model in this environment),
+      // fail-mode=closed must block PII routes.
+      DLP_ML_ENABLED: "true",
+      DLP_ML_FAIL_MODE: "closed",
+      DLP_ML_MODEL: "Xenova/this-model-does-not-exist-smoke",
+      DLP_ML_WARMUP_TIMEOUT_MS: "1000",
+      DLP_ML_TIMEOUT_MS: "500",
+      DLP_REGEX_BACKSTOP_ENABLED: "true",
+    },
+    async () => {
+      freshRequire("server/security/crypto.js");
+      const det = freshRequire("server/security/detector/index.js");
+      await det.init({ force: true });
+      const status = det.getRuntimeStatus();
+      ensure(status?.ml?.ready === false, "ML must not be ready in this synthetic test", status);
+      ensure(det.shouldBlockOnUnready() === true, "fail-closed must request to block on unready", status);
+      const { createSession } = freshRequire("server/security/dlp-service.js");
+      const dlp = createSession({ requestId: crypto.randomUUID() });
+      try {
+        const result = await dlp.protectPayload({ text: "Иван Иванов" });
+        ensure(!result.ok, "fail-closed must return ok=false", result);
+        ensure(result.blockedBy === "ml_unavailable", "blockedBy must be ml_unavailable", result);
+      } finally {
+        dlp.dispose();
+      }
+      return {
+        mlReady: status?.ml?.ready === true,
+        failMode: status?.failMode,
       };
     }
   );
@@ -290,7 +340,8 @@ async function run() {
   testProviderFailure();
   await testDlpNegativeCases();
   const rate = testRateLimit();
-  const detectorFallback = await testDetectorNerOffFallback();
+  const detectorFallback = await testDetectorMlDisabled();
+  const failClosed = await testDetectorFailClosedGate();
 
   console.log(`${SMOKE_PREFIX} OK`);
   console.log(
@@ -302,6 +353,7 @@ async function run() {
         },
         rateLimit: rate,
         detectorFallback,
+        failClosed,
       },
       null,
       2

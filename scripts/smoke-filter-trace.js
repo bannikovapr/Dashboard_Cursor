@@ -164,6 +164,19 @@ async function run() {
       "trace event without expected logType=filter_trace"
     );
 
+    // Regression guard: no raw PII should be sent to model.
+    const modelRequest = events.find((e) => e.event === "chat_model_request");
+    ensure(modelRequest, "chat_model_request event missing");
+    const sentQuestion = String(modelRequest?.sentToModel?.question || "");
+    ensure(sentQuestion.length > 0, "chat_model_request.sentToModel.question is empty", modelRequest);
+    ensure(!/ivanov@example\.com/i.test(sentQuestion), "raw email leaked into sentToModel.question", sentQuestion);
+    ensure(!/\+7\s*\(999\)\s*123-45-67/.test(sentQuestion), "raw phone leaked into sentToModel.question", sentQuestion);
+    ensure(
+      /\[\[DLP_[A-Z0-9_]+_\d{4,}\]\]/.test(sentQuestion),
+      "expected DLP token placeholder in sentToModel.question",
+      sentQuestion
+    );
+
     console.log(`${SMOKE_PREFIX} OK`);
     console.log(
       JSON.stringify(

@@ -20,7 +20,8 @@
    - data-mapper (шаг 03),
    - dashboard-builder (шаг 04),
    - dashboard-assistant (шаг 05),
-   - agent-tools (шаги 05 и 06).
+   - agent-tools (шаги 05 и 06),
+   - security-builder (шаг 05a, обязательно для production).
 5. kit/templates/dashboard.schema.json — каноничный контракт данных.
 6. kit/templates/*.example.yaml — шаблоны конфигов, которые я буду заполнять.
 
@@ -28,14 +29,16 @@
 
 - Дашборд не зависит от моего домена, количества источников, метрик, стека и
   языка. Всё кастомизируется через конфиги в моём корне проекта:
-  source-manifest.yaml, metric-catalog.yaml, brand.config.yaml, ui-layout.yaml.
+  source-manifest.yaml, metric-catalog.yaml, brand.config.yaml, ui-layout.yaml,
+  security-policy.yaml (если включаем security-пайплайн).
 - Ты не правишь бизнес-логику в коде. Любое изменение бизнеса — это изменение
   в YAML-конфиге + регенерация кода по конфигу.
 - Ты не выдумываешь числа и поля. Если чего-то не хватает — останавливайся и
   задавай вопрос.
 - Ты говоришь со мной на русском. Технические идентификаторы/пути/код — как есть.
 - Сначала — discovery (шаг 01). Потом — data contract и mapping. Потом — UI.
-  Потом — AI-ассистент. Потом — acceptance.
+  Потом — AI-ассистент (опционально), затем security (шаг 05a — обязательно
+  для production). Потом — acceptance.
 
 Что делать сейчас:
 

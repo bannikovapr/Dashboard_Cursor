@@ -130,10 +130,13 @@ DLP_ALLOW_EPHEMERAL_KEY=true
 - `npm run start:api` — запустить только backend API.
 - `npm run smoke:agent-dlp` — smoke-проверка DLP: токенизация/детокенизация и guard-правила.
 - `npm run smoke:hardening` — smoke-проверка key providers, DLP negative-cases и rate limit.
-- `npm run smoke:filter-trace` — smoke-проверка полноты событий трассировки фильтра.
+- `npm run smoke:filter-trace` — smoke-проверка полноты событий трассировки фильтра + проверка, что в `chat_model_request` не утекают raw email/phone.
+- `npm run smoke:security-suite` — расширенный security-набор (crypto, vault, detector, policy, dlp, rate-limit, log-redaction, perf-guard).
+- `npm run smoke:failclosed-api` — e2e-проверка fail-closed: при недоступной ML-модели `/api/chat` возвращает `503 ml_unavailable`.
 - `npm run smoke:forecast` — smoke-проверка прогнозного инструмента агента.
 - `npm run smoke:personnel` — smoke-проверка сценариев по данным сотрудников.
 - `npm run logs:check` — проверка консистентности security-логов.
+- `npm run ci:hygiene` — объединенный CI-прогон hygiene + smoke-набора безопасности.
 
 ## Формат данных `toir.json`
 
@@ -283,25 +286,22 @@ node scripts/build-dashboard-json.js
 
 ### DLP-правила (актуально)
 
-Секреты (`block`):
-- `openrouter_api_key`
-- `generic_api_key`
-- `bearer_token`
-- `private_key`
+Секреты (`block`, regex-backstop):
+- `regex_secret_openrouter_api_key`
+- `regex_secret_generic_api_key`
+- `regex_secret_bearer_token`
+- `regex_secret_pem`
+- `regex_secret_aws_access_key`
+- `regex_secret_jwt`
 
 Персональные/чувствительные данные (`tokenize`):
-- `fio`
-- `email`
-- `phone`
-- `company_name`
-- `department_name`
-- `installation_name`
-- `equipment_code_composite`
+- ML-семантика: `ml_person`, `ml_org`, `ml_location`
+- regex-backstop: `regex_email`, `regex_phone`, `regex_equipment_code`
 
 Доменные guard-правила для снижения ложных срабатываний:
 - общие названия оборудования (например, `Компрессор центробежный Siemens`) не токенизируются;
 - фразы вида `Номер детали ...`, `серийный ...` не должны ошибочно токенизироваться как телефон;
-- составные коды вида `INK_SIB_003_COMP_005` токенизируются как `equipment_code_composite`.
+- составные коды вида `INK_SIB_003_COMP_005` токенизируются как `regex_equipment_code`.
 
 Важно:
 - на дашборде данные отображаются в восстановленном виде после `restorePayload(...)`;

@@ -98,6 +98,21 @@ Claude Desktop. Примеры ниже — в терминологии Cursor.
 Агент сгенерирует бэкенд (`/api/chat`, `/api/agent`), реализует 7 инструментов
 и добавит панель чата в UI. Проверит 10 приёмочных вопросов.
 
+## Шаг 6.5 — (рекомендовано) подключите security-пайплайн (5–7 минут)
+
+Если в дашборде есть AI или вы планируете отдавать его за пределы внутренней
+сети — нужен security-слой: DLP, rate-limit, fail-closed, аудит.
+
+1. Скопируйте `kit/templates/security-policy.example.yaml` в корень проекта
+   как `security-policy.yaml`.
+2. Решите главное: `mode` (`strict` для production), `fail_mode`
+   (`monitor` для canary, `closed` для production), `key_provider`.
+3. Отправьте [prompts/45-setup-security.md](prompts/45-setup-security.md).
+
+Агент сгенерирует `server/security/*` со всеми компонентами, интегрирует DLP
+в `/api/chat` и `/api/agent`, добавит smoke-набор и подключит его в
+`ci:hygiene`. Подробности — [playbook/05a-security.md](playbook/05a-security.md).
+
 ## Шаг 7 — (опционально) подключите прогноз (3 минуты)
 
 Если в `metric-catalog.yaml -> series` есть `forecastable: true` — отправьте
@@ -135,6 +150,7 @@ Claude Desktop. Примеры ниже — в терминологии Cursor.
 | 4   | Сборка данных | 3–5    |
 | 5   | Сборка UI     | 5–7    |
 | 6*  | AI-ассистент  | 5      |
+| 6.5*| Security      | 5–7    |
 | 7*  | Прогноз       | 3      |
 | 8   | Приёмка       | 5      |
 

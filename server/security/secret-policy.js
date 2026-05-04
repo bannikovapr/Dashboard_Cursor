@@ -1,20 +1,42 @@
 "use strict";
 
-const POLICY_VERSION = "sprint5-hybrid";
+const POLICY_VERSION = "sprint6-ml-all";
 
 const RULE_POLICY = Object.freeze({
-  // Secrets (block by default).
+  // Secrets — block by default. Coming from regex-backstop and ML.
+  regex_secret_openrouter_api_key: { classification: "secret", defaultAction: "block", severity: "critical" },
+  regex_secret_generic_api_key: { classification: "secret", defaultAction: "block", severity: "high" },
+  regex_secret_bearer_token: { classification: "secret", defaultAction: "block", severity: "high" },
+  regex_secret_pem: { classification: "secret", defaultAction: "block", severity: "critical" },
+  regex_secret_aws_access_key: { classification: "secret", defaultAction: "block", severity: "critical" },
+  regex_secret_jwt: { classification: "secret", defaultAction: "block", severity: "high" },
+  ml_secret: { classification: "secret", defaultAction: "block", severity: "high" },
+
+  // Structural PII via regex-backstop (fail-safe coverage).
+  regex_email: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
+  regex_phone: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
+  regex_equipment_code: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
+
+  // Semantic PII via ML.
+  ml_person: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
+  ml_org: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
+  ml_location: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
+  ml_email: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
+  ml_phone: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
+  ml_equipment_code: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
+
+  // Backward-compat aliases for older log readers / persisted tokens.
+  // The new pipeline does not produce these IDs but policy lookups still resolve.
   openrouter_api_key: { classification: "secret", defaultAction: "block", severity: "critical" },
   generic_api_key: { classification: "secret", defaultAction: "block", severity: "high" },
   bearer_token: { classification: "secret", defaultAction: "block", severity: "high" },
   private_key: { classification: "secret", defaultAction: "block", severity: "critical" },
-
-  // Pattern-based PII (kept after hybrid migration).
   email: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
   phone: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
   equipment_code_composite: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
-
-  // Hybrid detector layers (replaces strict-list legacy rules).
+  ner_person: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
+  ner_org: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
+  ner_location: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
   dictionary_employee: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
   dictionary_org: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
   dictionary_department: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
@@ -22,17 +44,31 @@ const RULE_POLICY = Object.freeze({
   morph_fio: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
   structural_org: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
   structural_location: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
-  ner_person: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
-  ner_org: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
-  ner_location: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
-
-  // Legacy aliases kept for backward compatibility with older logs/tokens
-  // (not produced by the new detector, but recognized by policy lookups).
   fio: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
   company_name: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
   department_name: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
   installation_name: { classification: "pii", defaultAction: "tokenize", severity: "medium" },
 });
+
+// Active rule IDs produced by the current pipeline (excludes back-compat aliases).
+const ACTIVE_RULE_IDS = Object.freeze([
+  "regex_secret_openrouter_api_key",
+  "regex_secret_generic_api_key",
+  "regex_secret_bearer_token",
+  "regex_secret_pem",
+  "regex_secret_aws_access_key",
+  "regex_secret_jwt",
+  "ml_secret",
+  "regex_email",
+  "regex_phone",
+  "regex_equipment_code",
+  "ml_person",
+  "ml_org",
+  "ml_location",
+  "ml_email",
+  "ml_phone",
+  "ml_equipment_code",
+]);
 
 function normalizeMode(value) {
   const v = String(value || "").trim().toLowerCase();
@@ -46,6 +82,10 @@ function currentMode() {
 
 function listKnownRuleIds() {
   return Object.keys(RULE_POLICY);
+}
+
+function listActiveRuleIds() {
+  return [...ACTIVE_RULE_IDS];
 }
 
 function getRulePolicy(ruleId) {
@@ -68,13 +108,13 @@ function resolveAction(ruleId, fallbackAction) {
 
 function summarizePolicy() {
   const mode = currentMode();
-  const known = listKnownRuleIds();
-  const secrets = known.filter((id) => getRulePolicy(id).classification === "secret");
-  const pii = known.filter((id) => getRulePolicy(id).classification === "pii");
+  const active = ACTIVE_RULE_IDS;
+  const secrets = active.filter((id) => getRulePolicy(id).classification === "secret");
+  const pii = active.filter((id) => getRulePolicy(id).classification === "pii");
   return {
     version: POLICY_VERSION,
     mode,
-    knownRules: known.length,
+    knownRules: active.length,
     secretRules: secrets,
     piiRules: pii,
   };
@@ -83,6 +123,7 @@ function summarizePolicy() {
 module.exports = {
   POLICY_VERSION,
   listKnownRuleIds,
+  listActiveRuleIds,
   getRulePolicy,
   resolveAction,
   summarizePolicy,

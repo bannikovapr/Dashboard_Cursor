@@ -108,95 +108,6 @@ const GENERIC_EQUIPMENT_WORDS = new Set([
   "howo",
 ]);
 
-const EQUIPMENT_CODE_PATH_HINTS = ["equipment_code", "asset_code", "tag", "code", "код", "идентификатор", "номер"];
-const EQUIPMENT_NAME_PATH_HINTS = [
-  "equipment",
-  "machine",
-  "model",
-  "class",
-  "type",
-  "compressor",
-  "pump",
-  "оборуд",
-  "станок",
-  "насос",
-  "компрессор",
-  "агрегат",
-];
-
-const PHONE_CONTEXT_POSITIVE_HINTS = [
-  "телефон",
-  "тел.",
-  "контакт",
-  "моб",
-  "связь",
-  "whatsapp",
-  "звон",
-  "phone",
-  "call",
-];
-const PHONE_CONTEXT_NEGATIVE_HINTS = [
-  "номер детали",
-  "детали",
-  "серий",
-  "артикул",
-  "инвентар",
-  "идентификатор",
-  "заводской",
-  "part",
-  "serial",
-  "asset",
-  "tag",
-];
-
-// Pattern-based rules that remain as match sources (not strict-list-based).
-const RULES = [
-  {
-    id: "openrouter_api_key",
-    action: "block",
-    priority: 300,
-    regex: /\bsk-or-v1-[A-Za-z0-9_-]{16,}\b/g,
-  },
-  {
-    id: "generic_api_key",
-    action: "block",
-    priority: 290,
-    regex: /\b(?:api[_-]?key|token|secret)\s*[:=]\s*["']?[A-Za-z0-9_\-]{16,}["']?/gi,
-  },
-  {
-    id: "bearer_token",
-    action: "block",
-    priority: 280,
-    regex: /\bBearer\s+[A-Za-z0-9\-._~+/]+=*\b/gi,
-  },
-  {
-    id: "private_key",
-    action: "block",
-    priority: 270,
-    regex: /-----BEGIN (?:RSA |EC |OPENSSH |)?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |)?PRIVATE KEY-----/gi,
-  },
-  {
-    id: "email",
-    action: "tokenize",
-    priority: 160,
-    regex: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
-  },
-  {
-    id: "equipment_code_composite",
-    action: "tokenize",
-    priority: 145,
-    regex: /(?<![A-ZА-ЯЁ0-9_])(?:[A-ZА-ЯЁ0-9]{2,}(?:_[A-ZА-ЯЁ0-9]{2,}){2,})(?![A-ZА-ЯЁ0-9_])/gu,
-    guard: (text, ctx) => isLikelyCompositeEquipmentCode(text, ctx),
-  },
-  {
-    id: "phone",
-    action: "tokenize",
-    priority: 120,
-    regex: /(?<![\p{L}\d])(?:\+?\d[\d\s()\-]{8,}\d)(?![\p{L}\d])/gu,
-    guard: (text, ctx) => isLikelyPhone(text, ctx),
-  },
-];
-
 function parseBool(value, fallback) {
   if (value == null) return fallback;
   const v = String(value).trim().toLowerCase();
@@ -225,10 +136,6 @@ function isCanonicalTokenId(value) {
   return TOKEN_ID_RE.test(String(value || "").trim());
 }
 
-function stripDigits(text) {
-  return String(text || "").replace(/\D+/g, "");
-}
-
 function splitDomainWords(text) {
   const parts = String(text || "").match(/[A-Za-zА-Яа-яЁё0-9-]+/g);
   return Array.isArray(parts) ? parts : [];
@@ -244,51 +151,6 @@ function normalizeWord(word) {
   return String(word || "")
     .toLowerCase()
     .replace(/[^\u0430-\u044f\u0451-]/g, "");
-}
-
-function normalizePath(pathValue) {
-  return String(pathValue || "").toLowerCase();
-}
-
-function hasPathHint(pathValue, hints) {
-  const path = normalizePath(pathValue);
-  if (!path) return false;
-  return hints.some((hint) => path.includes(hint));
-}
-
-function isLikelyPhone(text, ctx) {
-  const raw = String(text || "").trim();
-  const digits = stripDigits(raw);
-  if (digits.length < 10 || digits.length > 15) return false;
-
-  const fullText = String(ctx?.fullText || "");
-  if (fullText) {
-    const knownStart = Number(ctx?.matchStart);
-    const knownEnd = Number(ctx?.matchEnd);
-    const start = Number.isFinite(knownStart) ? knownStart : Math.max(fullText.indexOf(raw), 0);
-    const end = Number.isFinite(knownEnd) ? knownEnd : Math.min(start + raw.length, fullText.length);
-    const from = Math.max(0, start - 36);
-    const to = Math.min(fullText.length, end + 36);
-    const around = fullText.slice(from, to).toLowerCase();
-    const hasPositiveContext = PHONE_CONTEXT_POSITIVE_HINTS.some((hint) => around.includes(hint));
-    const hasNegativeContext = PHONE_CONTEXT_NEGATIVE_HINTS.some((hint) => around.includes(hint));
-    if (hasNegativeContext && !hasPositiveContext) return false;
-  }
-
-  const startsWithPlus = raw.startsWith("+");
-  if (startsWithPlus) {
-    return digits.length >= 11 && digits.length <= 15;
-  }
-
-  if (digits.length === 11) {
-    return /^[78]/.test(digits);
-  }
-
-  if (digits.length === 10) {
-    return /^[9]/.test(digits);
-  }
-
-  return false;
 }
 
 function hasGenericEquipmentSemantics(text, options = {}) {
@@ -307,35 +169,19 @@ function hasGenericEquipmentSemantics(text, options = {}) {
   return genericHits >= 2;
 }
 
-function isLikelyCompositeEquipmentCode(text, ctx) {
-  const raw = String(text || "").trim();
-  if (!raw || raw.length < 8 || raw.length > 120) return false;
-  if (isCanonicalTokenId(normalizeTokenId(raw))) return false;
-  if (/\s/.test(raw)) return false;
-  if (!/^[A-ZА-ЯЁ0-9]+(?:_[A-ZА-ЯЁ0-9]+){2,}$/.test(raw)) return false;
-  const segments = raw.split("_");
-  if (segments.length < 3) return false;
-  if (segments.some((s) => s.length < 2)) return false;
-  const digitParts = segments.filter((s) => /^\d{2,}$/.test(s)).length;
-  const alphaParts = segments.filter((s) => /[A-ZА-ЯЁ]/.test(s)).length;
-  if (digitParts < 1 || alphaParts < 2) return false;
-  if (segments.every((s) => /^\d+$/.test(s))) return false;
+const PERSON_LIKE_RULES = new Set(["ml_person", "ner_person", "morph_fio", "dictionary_employee", "fio"]);
+const ORG_LIKE_RULES = new Set(["ml_org", "ner_org", "structural_org", "dictionary_org", "company_name", "department_name"]);
+const LOC_LIKE_RULES = new Set(["ml_location", "ner_location", "structural_location", "dictionary_installation", "installation_name"]);
 
-  const explicitCodePath = hasPathHint(ctx?.path, EQUIPMENT_CODE_PATH_HINTS);
-  const equipmentNamePath = hasPathHint(ctx?.path, EQUIPMENT_NAME_PATH_HINTS);
-  if (equipmentNamePath && !explicitCodePath && digitParts < 2) return false;
-  return true;
-}
-
-function detectorGuardKeeps(match, fullText) {
+function detectorGuardKeeps(match) {
   if (!match || typeof match !== "object") return false;
   const value = String(match.value || "");
   if (!value) return false;
   if (isCanonicalTokenId(normalizeTokenId(value))) return false;
   const ruleId = String(match.ruleId || "");
 
-  // FIO-like spans: drop blocklisted words.
-  if (ruleId === "morph_fio" || ruleId === "ner_person" || ruleId === "dictionary_employee") {
+  // FIO-like spans: drop blocklisted equipment vocabulary.
+  if (PERSON_LIKE_RULES.has(ruleId)) {
     const parts = value.trim().split(/\s+/);
     for (const part of parts) {
       if (/\d/.test(part)) return false;
@@ -348,12 +194,12 @@ function detectorGuardKeeps(match, fullText) {
   }
 
   // ORG-like spans must not collapse to generic equipment vocabulary.
-  if (ruleId === "ner_org" || ruleId === "structural_org" || ruleId === "dictionary_org") {
+  if (ORG_LIKE_RULES.has(ruleId)) {
     if (hasGenericEquipmentSemantics(value)) return false;
   }
 
   // Location/installation guards: drop spans built only from generic tail words.
-  if (ruleId === "ner_location" || ruleId === "structural_location" || ruleId === "dictionary_installation") {
+  if (LOC_LIKE_RULES.has(ruleId)) {
     const words = splitDomainWords(value).map(normalizeDomainWord).filter(Boolean);
     if (!words.length) return false;
     const tail = words.slice(1);
@@ -369,65 +215,6 @@ function detectorGuardKeeps(match, fullText) {
   }
 
   return true;
-}
-
-function hasOverlap(range, selected) {
-  for (const x of selected) {
-    if (range.start < x.end && x.start < range.end) return true;
-  }
-  return false;
-}
-
-function effectivePriority(match) {
-  if (Number.isFinite(match.priority)) return match.priority;
-  return match.action === "block" ? 200 : 100;
-}
-
-function collectRegexMatches(text, path) {
-  const all = [];
-  for (const rule of RULES) {
-    rule.regex.lastIndex = 0;
-    let m = rule.regex.exec(text);
-    while (m) {
-      const raw = m[0];
-      const start = m.index;
-      const end = start + raw.length;
-      const guardOk =
-        typeof rule.guard === "function"
-          ? rule.guard(raw, { path, fullText: text, matchStart: start, matchEnd: end, ruleId: rule.id })
-          : true;
-      if (guardOk) {
-        all.push({
-          start,
-          end,
-          value: raw,
-          ruleId: rule.id,
-          action: rule.action,
-          priority: Number(rule.priority),
-        });
-      }
-      if (!rule.regex.global) break;
-      m = rule.regex.exec(text);
-    }
-  }
-  return all;
-}
-
-function selectNonOverlapping(allMatches) {
-  const sorted = [...allMatches].sort((a, b) => {
-    if (a.start !== b.start) return a.start - b.start;
-    const byPriority = effectivePriority(b) - effectivePriority(a);
-    if (byPriority !== 0) return byPriority;
-    const byLength = b.end - b.start - (a.end - a.start);
-    if (byLength !== 0) return byLength;
-    return String(a.ruleId).localeCompare(String(b.ruleId));
-  });
-
-  const selected = [];
-  for (const item of sorted) {
-    if (!hasOverlap(item, selected)) selected.push(item);
-  }
-  return selected;
 }
 
 function createSession({ requestId }) {
@@ -448,12 +235,10 @@ function createSession({ requestId }) {
     const text = String(input || "");
     if (!text) return [];
 
-    const regexMatches = collectRegexMatches(text, path);
-
-    let detectorMatches = [];
+    let matches = [];
     try {
       const raw = await detector.detect(text, { path });
-      detectorMatches = (raw || []).filter((m) => detectorGuardKeeps(m, text));
+      matches = (raw || []).filter((m) => detectorGuardKeeps(m));
     } catch (e) {
       console.warn(
         JSON.stringify({
@@ -462,10 +247,9 @@ function createSession({ requestId }) {
           message: String(e?.message || e).slice(0, 240),
         })
       );
-      detectorMatches = [];
+      matches = [];
     }
-
-    return selectNonOverlapping([...regexMatches, ...detectorMatches]);
+    return matches;
   }
 
   async function sanitizeString(input, path, counters) {
@@ -486,6 +270,9 @@ function createSession({ requestId }) {
       counters.totalDetections += 1;
       counters.byType[m.ruleId] = (counters.byType[m.ruleId] || 0) + 1;
       counters.byClassification[classification] = (counters.byClassification[classification] || 0) + 1;
+      if (m.source) {
+        counters.bySource[m.source] = (counters.bySource[m.source] || 0) + 1;
+      }
 
       if (action === "block") {
         if (!blockedBy && blockOnSecrets) blockedBy = m.ruleId;
@@ -543,7 +330,43 @@ function createSession({ requestId }) {
       return {
         ok: true,
         payload,
-        summary: { enabled: false, policy, totalDetections: 0, tokensCreated: 0, byType: {}, byClassification: {} },
+        summary: {
+          enabled: false,
+          policy,
+          totalDetections: 0,
+          tokensCreated: 0,
+          byType: {},
+          byClassification: {},
+          bySource: {},
+        },
+      };
+    }
+
+    if (detector.shouldBlockOnUnready()) {
+      const reason = "ml_unavailable";
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          event: "dlp_ml_fail_closed",
+          requestId,
+          reason,
+        })
+      );
+      return {
+        ok: false,
+        blockedBy: reason,
+        blockedClassification: "ml_unavailable",
+        payload,
+        summary: {
+          enabled: true,
+          policy,
+          totalDetections: 0,
+          tokensCreated: 0,
+          byType: {},
+          byClassification: {},
+          bySource: {},
+          mlUnavailable: true,
+        },
       };
     }
 
@@ -553,6 +376,7 @@ function createSession({ requestId }) {
       byType: {},
       tokensByPath: {},
       byClassification: {},
+      bySource: {},
     };
     const result = await walkAndSanitize(payload, "$", counters);
     const blocked = Boolean(result.blockedBy);
@@ -569,6 +393,7 @@ function createSession({ requestId }) {
         tokensCreated: counters.tokensCreated,
         byType: counters.byType,
         byClassification: counters.byClassification,
+        bySource: counters.bySource,
       },
     };
   }

@@ -1,5 +1,18 @@
 node_modules/
 .env
 .env.local
+.env.*.local
 tmp/
 logs/
+
+# Cursor debug dumps (may contain request payloads)
+.cursor/debug*.log
+
+# Python bytecode (local scripts)
+__pycache__/
+*.pyc
+
+# Local ML model weights (kept out of repo, see models/README.md)
+models/**
+!models/README.md
+

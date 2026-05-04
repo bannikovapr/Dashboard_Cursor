@@ -29,10 +29,12 @@
 4. [playbook/04-ui-spec.md](playbook/04-ui-spec.md) — настройка интерфейса.
 5. [playbook/05-ai-assistant.md](playbook/05-ai-assistant.md) — чат и агент
   (опционально).
-6. [playbook/06-forecast.md](playbook/06-forecast.md) — прогноз временных
+6. [playbook/05a-security.md](playbook/05a-security.md) — DLP, rate-limit,
+  fail-closed, аудит (обязательно для production).
+7. [playbook/06-forecast.md](playbook/06-forecast.md) — прогноз временных
   рядов (опционально).
-7. [playbook/07-acceptance.md](playbook/07-acceptance.md) — приёмка дашборда.
-8. [playbook/08-iteration.md](playbook/08-iteration.md) — жизнь после сборки:
+8. [playbook/07-acceptance.md](playbook/07-acceptance.md) — приёмка дашборда.
+9. [playbook/08-iteration.md](playbook/08-iteration.md) — жизнь после сборки:
   добавление метрик, бренда, источников.
 
 ### Prompts — готовые сообщения агенту
@@ -42,6 +44,7 @@
 - [prompts/20-map-data.md](prompts/20-map-data.md) — сборка `dashboard.json`.
 - [prompts/30-build-ui.md](prompts/30-build-ui.md) — генерация интерфейса.
 - [prompts/40-setup-agent.md](prompts/40-setup-agent.md) — AI-ассистент.
+- [prompts/45-setup-security.md](prompts/45-setup-security.md) — security-пайплайн (DLP, rate-limit, fail-closed, smoke).
 - [prompts/50-forecast.md](prompts/50-forecast.md) — прогноз.
 - [prompts/90-acceptance.md](prompts/90-acceptance.md) — финальная приёмка.
 - [prompts/99-fix.md](prompts/99-fix.md) — 7 шаблонов точечных правок.
@@ -56,6 +59,9 @@
 правила ответов чата и агента.
 - [skills/agent-tools/SKILL.md](skills/agent-tools/SKILL.md) — 7 стандартных
 инструментов ReAct-агента.
+- [skills/security-builder/SKILL.md](skills/security-builder/SKILL.md) —
+универсальный паттерн безопасности (DLP, secret-policy, key provider,
+rate-limit, fail-closed, аудит).
 
 ### Templates — файлы, которые вы заполняете
 
@@ -69,6 +75,8 @@ JSON-схема каноничного `dashboard.json`.
 — бренд и локаль.
 - [templates/ui-layout.example.yaml](templates/ui-layout.example.yaml) —
 раскладка интерфейса.
+- [templates/security-policy.example.yaml](templates/security-policy.example.yaml)
+— декларативная политика безопасности (mode, fail-mode, ключи, rate-limit, логи).
 - [templates/acceptance-checklist.md](templates/acceptance-checklist.md) —
 чек-лист приёмки.
 

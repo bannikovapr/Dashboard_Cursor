@@ -110,6 +110,7 @@ kit/playbook/05-ai-assistant.md.
           `secrets_check: OK` или перечисли найденные проблемы.
 
 В конце сообщи список endpoint'ов, как запускать, как проверить. Предложи
-следующий промт: kit/prompts/50-forecast.md (если нужен прогноз) или
+следующий промт: kit/prompts/45-setup-security.md (для production-готовности
+ОБЯЗАТЕЛЬНО), затем kit/prompts/50-forecast.md (если нужен прогноз) или
 kit/prompts/90-acceptance.md.
 ```

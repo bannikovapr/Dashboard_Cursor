@@ -40,6 +40,20 @@ kit/templates/acceptance-checklist.md.
        * POST /api/chat с простым вопросом -> валидный ответ;
        * POST /api/agent с «топ-5 … графиком» -> artifacts есть,
          trace.toolsUsed содержит build_chart.
+   - Security pipeline (если security-policy.yaml включён, чек-лист §14):
+       * GET /health отдаёт mlReady, hardening.dlpKey, hardening.rateLimit,
+         hardening.detector; при fail_mode=closed + mlReady=false -> 503;
+       * запрос с email/phone -> в chat_model_request только токены
+         [[DLP_*_NNNN]], raw PII отсутствует; в ответе фронту значения
+         восстановлены;
+       * запрос с sk-or-v1-… -> 400 dlp_blocked (strict) или tokenize (monitor);
+       * при DLP_ML_FAIL_MODE=closed и недоступной ML -> 503 ml_unavailable;
+       * smoke:agent-dlp, smoke:hardening, smoke:filter-trace,
+         smoke:security-suite, smoke:failclosed-api — все PASS;
+       * логи logs/filter-trace.log, logs/dlp-agent-flow.log,
+         logs/security-audit.log — NDJSON, без raw secrets; работает ротация;
+       * rate-limit отсекает превышения и имеет разные лимиты для chat и
+         agent; bypass_localhost=false для production.
    - UI smoke (headless или вручную по чек-листу §11):
        * dashboard.json грузится с cache: "no-store";
        * прогнозная вкладка отрисовывает все прогнозные графики

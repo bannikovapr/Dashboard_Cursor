@@ -69,8 +69,9 @@ function redactSensitiveText(text) {
   out = out.replace(/\bAKIA[0-9A-Z]{16}\b/g, "[redacted_access_key]");
   out = out.replace(/\bBearer\s+[A-Za-z0-9._-]{10,}\b/gi, "Bearer [redacted_token]");
   out = out.replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, "[redacted_jwt]");
-  out = out.replace(/(?<![A-Za-z0-9_-])(?:\+?\d[\d()\-\s]{8,}\d)(?![A-Za-z0-9_-])/g, "[redacted_phone]");
+  // Preserve semantic label for PAN-like values before broad phone masking.
   out = redactCardLike(out);
+  out = out.replace(/(?<![A-Za-z0-9_-])(?:\+?\d[\d()\-\s]{8,}\d)(?![A-Za-z0-9_-])/g, "[redacted_phone]");
   return out;
 }
 

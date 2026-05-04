@@ -209,15 +209,19 @@ function applyHardeningHeaders(res, hardening) {
 app.get("/health", (_req, res) => {
   const policy = summarizePolicy();
   const dlpKey = getKeyStatus();
-  res.json({
-    ok: true,
+  const detectorStatus = detector.getRuntimeStatus();
+  const mlReady = Boolean(detectorStatus?.ml?.ready);
+  const status = mlReady || detectorStatus?.failMode !== "closed" ? 200 : 503;
+  res.status(status).json({
+    ok: status === 200,
     service: "toir-api",
     allowedOrigins,
     secretPolicyMode: policy.mode,
+    mlReady,
     hardening: {
       dlpKey,
       rateLimit: summarizeRateLimit(),
-      detector: detector.getRuntimeStatus(),
+      detector: detectorStatus,
     },
   });
 });
@@ -322,6 +326,12 @@ app.post("/api/chat", async (req, res) => {
     });
 
     if (!protectedInput.ok) {
+      const isMlUnavailable = protectedInput.blockedBy === "ml_unavailable";
+      const status = isMlUnavailable ? 503 : 400;
+      const errorCode = isMlUnavailable ? "ml_unavailable" : "dlp_blocked";
+      const message = isMlUnavailable
+        ? "ML-детектор временно недоступен. Запрос отклонён политикой fail-closed."
+        : "Запрос содержит секреты и заблокирован политикой DLP.";
       auditWithContext("chat_dlp_blocked", {
         requestId,
         route: "/api/chat",
@@ -347,11 +357,11 @@ app.post("/api/chat", async (req, res) => {
         detections: protectedInput.summary?.byType || {},
         byClassification: protectedInput.summary?.byClassification || {},
       });
-      return sendChatResponse(400, {
+      return sendChatResponse(status, {
         ok: false,
-        errorCode: "dlp_blocked",
+        errorCode,
         requestId,
-        message: "Запрос содержит секреты и заблокирован политикой DLP.",
+        message,
       });
     }
 
@@ -684,6 +694,12 @@ app.post("/api/agent", async (req, res) => {
     });
 
     if (!protectedInput.ok) {
+      const isMlUnavailable = protectedInput.blockedBy === "ml_unavailable";
+      const status = isMlUnavailable ? 503 : 400;
+      const errorCode = isMlUnavailable ? "ml_unavailable" : "dlp_blocked";
+      const message = isMlUnavailable
+        ? "ML-детектор временно недоступен. Запрос отклонён политикой fail-closed."
+        : "Запрос содержит секреты и заблокирован политикой DLP.";
       auditWithContext("agent_dlp_blocked", {
         requestId,
         route: "/api/agent",
@@ -709,11 +725,11 @@ app.post("/api/agent", async (req, res) => {
         detections: protectedInput.summary?.byType || {},
         byClassification: protectedInput.summary?.byClassification || {},
       });
-      return sendAgentResponse(400, {
+      return sendAgentResponse(status, {
         ok: false,
-        errorCode: "dlp_blocked",
+        errorCode,
         requestId,
-        message: "Request contains secrets and was blocked by DLP policy.",
+        message,
       });
     }
 
@@ -917,28 +933,39 @@ app.post("/api/agent", async (req, res) => {
 
 const bootDlpKeyStatus = getKeyStatus();
 let bootDetectorStats = null;
-try {
-  bootDetectorStats = detector.init({ force: true });
-} catch (e) {
-  bootDetectorStats = { error: String(e?.message || e).slice(0, 240) };
-  console.warn(
-    JSON.stringify({
-      level: "warn",
-      event: "dlp_detector_boot_failed",
-      message: bootDetectorStats.error,
-    })
-  );
-}
-
-audit("security_boot_hardening", {
-  route: "startup",
-  hardening: {
-    dlpKey: bootDlpKeyStatus,
-    rateLimit: summarizeRateLimit(),
-    secretPolicyMode: summarizePolicy().mode,
-    detector: bootDetectorStats,
-  },
-});
+const detectorBoot = Promise.resolve()
+  .then(() => detector.init({ force: true }))
+  .then((stats) => {
+    bootDetectorStats = stats;
+    audit("security_boot_hardening", {
+      route: "startup",
+      hardening: {
+        dlpKey: bootDlpKeyStatus,
+        rateLimit: summarizeRateLimit(),
+        secretPolicyMode: summarizePolicy().mode,
+        detector: bootDetectorStats,
+      },
+    });
+  })
+  .catch((e) => {
+    bootDetectorStats = { error: String(e?.message || e).slice(0, 240) };
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        event: "dlp_detector_boot_failed",
+        message: bootDetectorStats.error,
+      })
+    );
+    audit("security_boot_hardening", {
+      route: "startup",
+      hardening: {
+        dlpKey: bootDlpKeyStatus,
+        rateLimit: summarizeRateLimit(),
+        secretPolicyMode: summarizePolicy().mode,
+        detector: bootDetectorStats,
+      },
+    });
+  });
 if (bootDlpKeyStatus?.ephemeral) {
   audit("dlp_ephemeral_key_active", {
     route: "startup",
@@ -952,4 +979,17 @@ if (bootDlpKeyStatus?.ephemeral) {
 
 app.listen(API_PORT, () => {
   console.log(`TOIR API listening on http://localhost:${API_PORT}`);
+  detectorBoot.finally(() => {
+    const status = detector.getRuntimeStatus();
+    console.log(
+      JSON.stringify({
+        level: "info",
+        event: "dlp_detector_ready",
+        ready: status?.ready === true,
+        mlReady: status?.ml?.ready === true,
+        mlLoadMs: status?.ml?.loadMs || null,
+        failMode: status?.failMode || null,
+      })
+    );
+  });
 });

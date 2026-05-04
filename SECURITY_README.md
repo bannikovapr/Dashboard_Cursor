@@ -1,4 +1,4 @@
-﻿# Система Безопасности TOIR API
+# Система Безопасности TOIR API
 
 Этот документ описывает текущую реализацию безопасности в проекте TOIR Dashboard (backend `server/`), включая гибридный DLP-детектор (Sprint 5) и staged-hardening ключа DLP.
 
@@ -64,54 +64,54 @@
 - PII классификации `pii` токенизируется,
 - структура payload сохраняется (замены происходят только в строковых фрагментах).
 
-### 5.2. Источники матчей
+### 5.2. Источники матчей (Sprint 6: ml-all)
 
-Источники матчей делятся на две группы.
+Архитектура детектора — **ML-first с regex-backstop**:
 
-Pattern-based (regex) правила:
+- ML-движок (`server/security/detector/ner-engine.js`) на базе `@xenova/transformers` (token-classification) — единственный источник семантических PII (`ml_person`, `ml_org`, `ml_location`).
+- Regex-backstop (`server/security/detector/regex-backstop.js`) — детерминированное покрытие секретов и структурных PII:
+  - Секреты (block): `regex_secret_openrouter_api_key`, `regex_secret_generic_api_key`, `regex_secret_bearer_token`, `regex_secret_pem`, `regex_secret_aws_access_key`, `regex_secret_jwt`.
+  - PII (tokenize): `regex_email`, `regex_phone` (с positive/negative context guard), `regex_equipment_code` (с path/structure guard).
 
-- `openrouter_api_key` - block,
-- `generic_api_key` - block,
-- `bearer_token` - block,
-- `private_key` - block,
-- `email` - tokenize,
-- `phone` - tokenize (с positive/negative context guard),
-- `equipment_code_composite` - tokenize (с path/structure guard).
+Спаны от ML и regex объединяются в `detector/index.js` через дедупликацию по приоритетам:
 
-Hybrid detector (новые слои Sprint 5, см. `server/security/detector/`):
+- секреты (block): 270-300,
+- ML PII (`ml_person`/`ml_org`/`ml_location`): 166-170,
+- regex PII (`regex_email`/`regex_phone`/`regex_equipment_code`): 120-165,
+- (зарезервировано) `ml_email`/`ml_phone`/`ml_equipment_code`/`ml_secret`: 125-270, на случай перехода на zero-shot модель (GLiNER) в Phase 2.
 
-- `dictionary_employee`, `dictionary_org`, `dictionary_department`, `dictionary_installation` - точные совпадения по словарю, построенному из `data/personnel_dlp_test.json`, `data/personnel_org_usage.json`, `data/toir.json`.
-- `morph_fio` - морфологический детектор ФИО без жёстких суффикс-листов: окно 3 заглавных кириллических токенов, скоринг по знакомым окончаниям (отчество/фамилия) и по словарю имён, собранному из данных.
-- `structural_org`, `structural_location` - структурные эвристики: 2-5 капитализованных слов рядом, классифицируются по слабым контекстным сигналам (legal-форма, класс-нос).
-- `ner_person`, `ner_org`, `ner_location` - опциональный ML NER через `@xenova/transformers` в assist-режиме (lazy-load, кеш по digest, таймаут).
+Управляющие флаги (`.env`):
 
-Все слои детектора управляются флагами:
-`DLP_DICT_ENABLED`, `DLP_MORPH_FIO_ENABLED`, `DLP_STRUCTURAL_ENABLED`, `DLP_NER_ENABLED`, `DLP_NER_MODEL`, `DLP_NER_THRESHOLD`, `DLP_NER_TIMEOUT_MS`, `DLP_NER_MAX_CHARS`.
+- `DLP_ML_ENABLED` (по умолчанию `true`) — главный kill-switch ML-слоя.
+- `DLP_ML_BACKEND` — `transformers` (текущий) или `gliner` (Phase 2, требует ONNX-экспорт, см. `models/README.md`).
+- `DLP_ML_MODEL` — id модели на HuggingFace; по умолчанию `Xenova/bert-base-multilingual-cased-ner-hrl`.
+- `DLP_ML_FAIL_MODE` — `monitor` (Phase 1, не блокировать при недоступной ML) или `closed` (Phase 2, блокировать PII-маршруты).
+- `DLP_ML_THRESHOLDS` — JSON с порогами по `ruleId` (например `{"ml_person":0.6,"ml_org":0.7}`).
+- `DLP_ML_THRESHOLD` — общий fallback-порог.
+- `DLP_ML_WARMUP_TIMEOUT_MS`, `DLP_ML_TIMEOUT_MS`, `DLP_ML_MAX_CHARS` — управление загрузкой/инференсом.
+- `DLP_REGEX_BACKSTOP_ENABLED` (по умолчанию `true`) — отключать только для ML-only экспериментов.
 
-Жёсткие списки (`FIO_NON_PERSON_WORDS`, `GENERIC_EQUIPMENT_WORDS`, `GENERIC_INSTALLATION_TAIL_WORDS`, `INSTALLATION_INTENT_WORDS`, `PHONE_CONTEXT_*`) сохранены **только** как guard-фильтры false positives и больше не используются как источник матчей.
+Жёсткие списки (`FIO_NON_PERSON_WORDS`, `GENERIC_EQUIPMENT_WORDS`, `GENERIC_INSTALLATION_TAIL_WORDS`, `INSTALLATION_INTENT_WORDS`, `PHONE_CONTEXT_*`) сохранены **только** как guard-фильтры false positives ML и больше не используются как источник матчей.
 
-Приоритеты матчей (выше - сильнее):
-
-- секреты (block) - 270-300,
-- regex PII (`email`, `equipment_code_composite`, `phone`) - 120-160,
-- `dictionary_*` - 180-200,
-- `morph_fio` - 170,
-- `structural_*` - 155-160,
-- `ner_*` - 140-150.
+Источники Sprint 5 (`dictionary_*`, `morph_fio`, `structural_*`, `ner_*`) перенесены в `server/security/detector/legacy/` и больше не подключаются. `secret-policy.js` сохраняет их IDs как backward-compat алиасы для чтения старых логов и токенов.
 
 Примеры ожидаемого поведения:
 
-- `Иванов Иван Иванович` -> токенизируется как `morph_fio` (или `dictionary_employee`, если есть в словаре).
-- `Антипов Виниамин Павлович` (из словаря) -> токенизируется как `dictionary_employee`.
-- `ООО СибИнк Сервис` -> `structural_org`.
-- `РК "Гефест"` (из словаря) -> `dictionary_org`.
-- `Отдел капитального строительства` (из словаря) -> `dictionary_department`.
-- `Площадка Усть-каменогорская` -> `structural_location`.
-- `INK_SIB_003_COMP_005` -> `equipment_code_composite`.
-- `Компрессор центробежный Siemens` -> не токенизируется (общее название оборудования).
-- `Установка компрессорная основная требует диагностики` -> не токенизируется (guard).
-- `Номер детали 1234567890, серийный 70000000000` -> не токенизируется как `phone` (negative context).
+- `Иванов Иван Иванович` -> токенизируется как `ml_person`.
+- `ООО Гефест` -> `ml_org` (или `ml_location` для географических объектов).
+- `petrov.service@corp.ru` -> `regex_email` -> tokenize.
+- `+7 999 123 45 67` -> `regex_phone` -> tokenize.
+- `INK_SIB_003_COMP_005` -> `regex_equipment_code` -> tokenize.
+- `sk-or-v1-EXAMPLE` (полный ключ длиной 16+ символов) -> `regex_secret_openrouter_api_key` -> **block**.
+- блок `BEGIN PRIVATE KEY` ... `END PRIVATE KEY` (PEM) -> `regex_secret_pem` -> **block**.
+- `Bearer eyJhbGciOi…` (полный JWT) -> `regex_secret_bearer_token` или `regex_secret_jwt` -> **block**.
 - существующие DLP-токены вида `[[DLP_*_0001]]` не пересчитываются повторно.
+
+### 5.2.1. Fail-closed гейт
+
+Если `DLP_ML_FAIL_MODE=closed` и ML-движок не загрузился (`mlReady=false`), `protectPayload` возвращает `blockedBy="ml_unavailable"`, а маршруты `/api/agent` и `/api/chat` отвечают `503` с `errorCode="ml_unavailable"`. В режиме `monitor` запрос пропускается с предупреждением в audit-log; покрытие гарантируется regex-backstop'ом.
+
+`/health` возвращает поле `mlReady` и подробности (`ml.loadMs`, `ml.lastInferenceMs`, `failMode`) в `hardening.detector`. При `failMode=closed` и `mlReady=false` `/health` отвечает `503`.
 
 ### 5.3. Политика режимов
 
@@ -275,7 +275,9 @@ Audit intentionally хранит digest/сводки и не дублирует 
 - `npm run logs:check` - проверка консистентности логов (schema/event/stage).
 - `npm run logs:migrate` - миграция legacy-записей в архив.
 - `npm run smoke:hardening` - smoke-проверка key providers, DLP negative cases, rate limit и graceful fallback гибридного детектора при выключенном NER.
-- `npm run smoke:filter-trace` - smoke-проверка полноты filter-trace событий.
+- `npm run smoke:filter-trace` - smoke-проверка полноты filter-trace событий + контроль отсутствия raw PII в `chat_model_request`.
+- `npm run smoke:security-suite` - расширенный security-suite (crypto/vault/detector/policy/dlp/rate-limit/log-utils + perf-guards).
+- `npm run smoke:failclosed-api` - e2e-проверка fail-closed ответа `503 ml_unavailable` при недоступной ML-модели.
 - `npm run smoke:personnel` - smoke-сценарии по данным персонала (интенты и связанный AI-slice).
 
 Рекомендуемый минимальный CI-пайплайн:
@@ -283,7 +285,9 @@ Audit intentionally хранит digest/сводки и не дублирует 
 1. `npm run smoke:agent-dlp`
 2. `npm run smoke:hardening`
 3. `npm run smoke:filter-trace`
-4. `npm run logs:check`
+4. `npm run smoke:security-suite`
+5. `npm run smoke:failclosed-api`
+6. `npm run logs:check`
 
 ## 11. Рекомендации для production
 
@@ -305,7 +309,7 @@ Audit intentionally хранит digest/сводки и не дублирует 
 3. DLP rule set регулярный и требует регулярной калибровки под домен.
 4. Полные payload в trace-логах могут быть объемными (хотя и с sanitize).
 5. Гибридный детектор требует периодической переиндексации словаря после изменений в `data/`.
-6. ML NER (assist-режим) требует загрузки модели на старте и потребляет дополнительную память; включается опционально через `DLP_NER_ENABLED=true`.
+6. ML-движок (`DLP_ML_ENABLED=true`) требует загрузки модели на старте, потребляет дополнительную память (~500-900 МБ для текущей модели). На холодном старте выполняется `warmup()` с таймаутом `DLP_ML_WARMUP_TIMEOUT_MS` (по умолчанию 25 с). Минимальные требования к процессу: ≥2 ГБ RAM.
 
 ## 13. Быстрый чек-лист инцидента
 
@@ -326,7 +330,8 @@ Get-Content .\logs\security-audit.log | Select-String '"requestId":"<REQUEST_ID>
 ## 14. Актуальные переменные окружения (ключевые)
 
 - DLP runtime: `DLP_ENABLED`, `DLP_BLOCK_ON_SECRETS`, `DLP_TOKEN_TTL_SEC`, `DLP_RESTORE_MAX_PASSES`.
-- Hybrid detector: `DLP_DICT_ENABLED`, `DLP_MORPH_FIO_ENABLED`, `DLP_STRUCTURAL_ENABLED`, `DLP_NER_ENABLED`, `DLP_NER_MODEL`, `DLP_NER_THRESHOLD`, `DLP_NER_TIMEOUT_MS`, `DLP_NER_MAX_CHARS`.
+- ML detector: `DLP_ML_ENABLED`, `DLP_ML_BACKEND`, `DLP_ML_MODEL`, `DLP_ML_MODEL_DIR`, `DLP_ML_FAIL_MODE`, `DLP_ML_THRESHOLDS`, `DLP_ML_THRESHOLD`, `DLP_ML_WARMUP_TIMEOUT_MS`, `DLP_ML_TIMEOUT_MS`, `DLP_ML_MAX_CHARS`.
+- Regex backstop: `DLP_REGEX_BACKSTOP_ENABLED`.
 - Key provider: `DLP_KEY_PROVIDER`, `DLP_REQUIRE_CONFIGURED_KEY`, `DLP_ALLOW_EPHEMERAL_KEY`, `DLP_MASTER_KEY_B64|HEX`, `DLP_MASTER_KEY_FILE`, `DLP_VAULT_KEY_*`, `DLP_KMS_KEY_*`.
 - Secret policy: `SECRET_POLICY_MODE`.
 - Rate limit: `RATE_LIMIT_*`, включая route-specific `RATE_LIMIT_CHAT_*` и `RATE_LIMIT_AGENT_*`.

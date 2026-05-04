@@ -109,7 +109,34 @@
 - Кириллические имена колонок из Excel/CSV корректно маппятся — значения попадают в KPI и графики без «?»-символов.
 - Подписи в UI (легенды, тикеры, заголовки) показывают кириллицу корректно на русском и на заданной локали.
 
-## 14. Windows-runtime (если запуск на Windows)
+## 14. Security pipeline (если security-policy.yaml включён)
+
+- В корне есть `security-policy.yaml`, версия и режим (`mode`) явно зафиксированы.
+- На `GET /health` присутствуют поля: `mlReady`, `hardening.dlpKey`,
+  `hardening.rateLimit`, `hardening.detector`. При `fail_mode=closed` и
+  `mlReady=false` `/health` возвращает `503`.
+- Запрос `POST /api/chat` с email и телефоном:
+  * в `chat_model_request` (filter-trace) — только токены `[[DLP_*_NNNN]]`,
+    raw email/phone отсутствуют;
+  * в ответе фронту email/phone восстановлены через `restorePayload`.
+- Запрос `POST /api/chat` с `sk-or-v1-…` (или другим секретом):
+  * в `strict` — `400 dlp_blocked`;
+  * в `monitor` — `200`, секрет токенизирован, в audit есть warn-event.
+- При `DLP_ML_FAIL_MODE=closed` и недоступной ML-модели `/api/chat` и
+  `/api/agent` возвращают `503 ml_unavailable`. Smoke-проверка
+  (`smoke:failclosed-api`) проходит.
+- Smoke-набор подключён к `ci:hygiene` и проходит:
+  `smoke:agent-dlp`, `smoke:hardening`, `smoke:filter-trace`,
+  `smoke:security-suite`, `smoke:failclosed-api`.
+- Логи `logs/filter-trace.log`, `logs/dlp-agent-flow.log`,
+  `logs/security-audit.log` — NDJSON, без сырых секретов; ротация работает
+  (есть архивные файлы при превышении лимита).
+- Rate-limit отсекает превышения (`429 rate_limited`); `chat` и `agent`
+  имеют разные лимиты; `bypass_localhost` отключён в production.
+- В репо нет `.env`, есть `.env.example` со всеми ключами из
+  `security-policy.yaml -> env_keys` (без значений).
+
+## 15. Windows-runtime (если запуск на Windows)
 
 - PowerShell-обёртка запуска не падает на execution policy (внутри явно `Set-ExecutionPolicy -Scope Process` или используется `.cmd`).
 - Перед стартом сервера скрипт проверяет/освобождает занятые порты (`netstat -ano` → `Stop-Process`), не «зависает на запуске».

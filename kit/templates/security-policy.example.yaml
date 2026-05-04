@@ -1,0 +1,212 @@
+# security-policy.yaml
+#
+# Декларативная политика безопасности дашборда. Один файл — один режим.
+# Агент по этому файлу прошивает поведение security-модулей и проставляет
+# соответствующие .env-переменные.
+#
+# Контракт описан в kit/skills/security-builder/SKILL.md.
+
+version: "1.0"
+
+# Глобальный режим обработки секретов:
+#   strict  — секреты блокируются (production-default);
+#   monitor — секреты детектируются, но переводятся в tokenize (canary);
+#   off     — fallback-action как есть, без policy-override (только debug).
+mode: "strict"
+
+# Поведение пайплайна, когда ML-движок включён, но не загружен:
+#   closed  — запрос блокируется, маршруты PII отвечают 503 ml_unavailable;
+#   monitor — запрос пропускается, regex-backstop остаётся, в audit пишется warn;
+#   open    — то же, что monitor (для совместимости).
+fail_mode: "monitor"
+
+# Источник мастер-ключа для AES-256-GCM шифрования токенов.
+key_provider:
+  preferred: "auto"          # auto | env | vault | kms
+  require_configured: false  # production: true (без ключа сервис fail-closed)
+  allow_ephemeral: true      # production: false; canary: true (с алертом)
+  rollout:
+    stage: "transition"      # transition | production
+    target: "production"
+
+# DLP-детектор: ML-first + regex-backstop.
+detector:
+  ml:
+    enabled: true
+    backend: "transformers"  # transformers | gliner | python | spacy | ...
+    model: "Xenova/bert-base-multilingual-cased-ner-hrl"
+    # Доверительные пороги по правилам. Любое значение можно переопределить
+    # через DLP_ML_THRESHOLDS (JSON в .env).
+    thresholds:
+      ml_person:   0.6
+      ml_org:      0.7
+      ml_location: 0.7
+    fallback_threshold: 0.7
+    timeouts:
+      warmup_ms:   25000
+      inference_ms: 1500
+    max_chars: 4000
+  regex_backstop:
+    enabled: true
+    # Опционально — кастомные доменные паттерны, которые добавляются в
+    # стандартный набор (секреты, email, phone, equipment_code).
+    extra_rules: []
+
+# Политика по правилам. Имена соответствуют ruleId, которые отдаёт детектор.
+# Если правило отсутствует в списке — берётся defaultAction "tokenize".
+rules:
+  # Секреты (block, classification=secret).
+  regex_secret_openrouter_api_key:
+    classification: "secret"
+    defaultAction:  "block"
+    severity:       "critical"
+  regex_secret_generic_api_key:
+    classification: "secret"
+    defaultAction:  "block"
+    severity:       "high"
+  regex_secret_bearer_token:
+    classification: "secret"
+    defaultAction:  "block"
+    severity:       "high"
+  regex_secret_pem:
+    classification: "secret"
+    defaultAction:  "block"
+    severity:       "critical"
+  regex_secret_aws_access_key:
+    classification: "secret"
+    defaultAction:  "block"
+    severity:       "critical"
+  regex_secret_jwt:
+    classification: "secret"
+    defaultAction:  "block"
+    severity:       "high"
+
+  # PII (tokenize, classification=pii) — структурные.
+  regex_email:
+    classification: "pii"
+    defaultAction:  "tokenize"
+    severity:       "medium"
+  regex_phone:
+    classification: "pii"
+    defaultAction:  "tokenize"
+    severity:       "medium"
+  regex_equipment_code:
+    classification: "pii"
+    defaultAction:  "tokenize"
+    severity:       "medium"
+
+  # PII (tokenize, classification=pii) — семантические (ML).
+  ml_person:
+    classification: "pii"
+    defaultAction:  "tokenize"
+    severity:       "medium"
+  ml_org:
+    classification: "pii"
+    defaultAction:  "tokenize"
+    severity:       "medium"
+  ml_location:
+    classification: "pii"
+    defaultAction:  "tokenize"
+    severity:       "medium"
+
+# Token vault: где и как долго хранить шифротекст.
+token_vault:
+  store: "memory"            # memory | redis (для multi-instance)
+  ttl_sec: 900               # 15 минут
+  redis:
+    url_env: "DLP_REDIS_URL" # имя переменной окружения с DSN
+
+# Rate-limit. Пер-маршрутные лимиты + общий fallback.
+rate_limit:
+  enabled: true
+  bypass_localhost: false    # production: false
+  defaults:
+    max: 120
+    window_ms: 60000
+  routes:
+    chat:
+      max: 60
+      window_ms: 60000
+    agent:
+      max: 30
+      window_ms: 60000
+
+# Логирование: три канала с независимой ротацией.
+logging:
+  filter_trace:
+    enabled: true
+    redact: true
+    max_string: 10000
+    rotate:
+      daily: true
+      max_bytes: 5242880     # 5 MB
+      max_files: 14
+  agent_flow:
+    enabled: true
+    redact: true
+    max_string: 30000
+    model_io_verbose: false  # true только для отладки
+    rotate:
+      daily: true
+      max_bytes: 5242880
+      max_files: 14
+  audit:
+    enabled: true
+    rotate:
+      daily: true
+      max_bytes: 5242880
+      max_files: 30
+
+# Smoke-проверки, которые должны быть подключены к ci:hygiene.
+smoke:
+  required:
+    - smoke:agent-dlp
+    - smoke:hardening
+    - smoke:filter-trace
+    - smoke:security-suite
+    - smoke:failclosed-api
+  performance:
+    detector_max_ms: 4000
+    dlp_protect_max_ms: 4000
+
+# Список .env-переменных, которые агент должен зафиксировать в .env.example.
+# Реальные значения никогда не попадают в этот файл — только плейсхолдеры.
+env_keys:
+  - DLP_ENABLED
+  - DLP_BLOCK_ON_SECRETS
+  - DLP_TOKEN_TTL_SEC
+  - DLP_RESTORE_MAX_PASSES
+  - DLP_KEY_PROVIDER
+  - DLP_REQUIRE_CONFIGURED_KEY
+  - DLP_ALLOW_EPHEMERAL_KEY
+  - DLP_MASTER_KEY_B64
+  - DLP_MASTER_KEY_HEX
+  - DLP_MASTER_KEY_FILE
+  - DLP_VAULT_KEY_B64
+  - DLP_KMS_KEY_B64
+  - DLP_ML_ENABLED
+  - DLP_ML_BACKEND
+  - DLP_ML_MODEL
+  - DLP_ML_FAIL_MODE
+  - DLP_ML_THRESHOLDS
+  - DLP_ML_THRESHOLD
+  - DLP_ML_WARMUP_TIMEOUT_MS
+  - DLP_ML_TIMEOUT_MS
+  - DLP_ML_MAX_CHARS
+  - DLP_REGEX_BACKSTOP_ENABLED
+  - SECRET_POLICY_MODE
+  - RATE_LIMIT_ENABLED
+  - RATE_LIMIT_BYPASS_LOCALHOST
+  - RATE_LIMIT_MAX
+  - RATE_LIMIT_WINDOW_MS
+  - RATE_LIMIT_CHAT_MAX
+  - RATE_LIMIT_CHAT_WINDOW_MS
+  - RATE_LIMIT_AGENT_MAX
+  - RATE_LIMIT_AGENT_WINDOW_MS
+  - FILTER_TRACE_LOG_ENABLED
+  - FILTER_TRACE_LOG_PATH
+  - DLP_AGENT_FLOW_LOG_ENABLED
+  - DLP_AGENT_FLOW_LOG_PATH
+  - DLP_AGENT_FLOW_MODEL_IO_VERBOSE
+  - AUDIT_LOG_ENABLED
+  - AUDIT_LOG_PATH

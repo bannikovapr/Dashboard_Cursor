@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 const dataStore = require("./data-store");
 const { executeTool, TOOL_DEFINITIONS } = require("./tools");
@@ -9,12 +9,12 @@ const MAX_STEPS = 5;
 const AGENT_TIMEOUT_MS = 90000;
 const STEP_TIMEOUT_MS = 45000;
 const FORMAT_REPAIR_PROMPT =
-  "Предыдущий ответ не соответствует требуемому формату. " +
-  "Верни только валидный JSON без markdown. " +
-  "Допустимы только два формата: " +
+  "���������� ����� �� ������������� ���������� �������. " +
+  "����� ������ �������� JSON ��� markdown. " +
+  "��������� ������ ��� �������: " +
   "{\"thinking\":\"...\",\"tool_calls\":[{\"tool\":\"name\",\"params\":{}}]} " +
-  "или {\"answer\":{\"fact\":\"...\",\"conclusion\":\"...\",\"action\":\"...\"},\"artifacts\":[]}. " +
-  "Если данные уже собраны, верни финальный answer.";
+  "��� {\"answer\":{\"fact\":\"...\",\"conclusion\":\"...\",\"action\":\"...\"},\"artifacts\":[]}. " +
+  "���� ������ ��� �������, ����� ��������� answer.";
 
 function getModelChain() {
   const primary = process.env.OPENROUTER_MODEL || "google/gemma-4-31b-it:free";
@@ -148,7 +148,6 @@ function censorToolResultForModel(tr) {
       ? (!hasWhere ? "rows_redacted_unfiltered_query" : "rows_redacted_large_result")
       : "none",
   };
-
   return {
     ...tr,
     result: shouldRedactRows
@@ -182,6 +181,44 @@ function shouldForceGroundedFallback(modelToolResults) {
   });
 }
 
+function buildUserTableArtifactFromToolResults(toolResults) {
+  const queryDataResults = Array.isArray(toolResults) ? toolResults.filter((x) => x?.tool === "query_data") : [];
+  if (queryDataResults.length !== 1) return null;
+  const result = queryDataResults[0]?.result || {};
+  const rows = Array.isArray(result.rows) ? result.rows : [];
+  if (!rows.length) return null;
+
+  const hasEmployee = rows.some((r) => r && typeof r === "object" && Object.prototype.hasOwnProperty.call(r, "employee"));
+  const hasFact = rows.some((r) => r && typeof r === "object" && Object.prototype.hasOwnProperty.call(r, "fact_h"));
+  const hasPlan = rows.some((r) => r && typeof r === "object" && Object.prototype.hasOwnProperty.call(r, "plan_h"));
+  if (!hasEmployee || !hasFact || !hasPlan) return null;
+
+  const viewRows = rows.slice(0, 50).map((r) => {
+    const plan = Number(r?.plan_h);
+    const fact = Number(r?.fact_h);
+    const utilization =
+      Number.isFinite(plan) && plan > 0 && Number.isFinite(fact) ? Number(((fact / plan) * 100).toFixed(2)) : null;
+    return {
+      employee: r?.employee ?? null,
+      fact_h: Number.isFinite(fact) ? Number(fact.toFixed(2)) : null,
+      plan_h: Number.isFinite(plan) ? Number(plan.toFixed(2)) : null,
+      utilization_pct: utilization,
+    };
+  });
+
+  return {
+    type: "table",
+    title: "������������ ����������� (����/����)",
+    columns: [
+      { key: "employee", label: "���������" },
+      { key: "fact_h", label: "���� (�)" },
+      { key: "plan_h", label: "���� (�)" },
+      { key: "utilization_pct", label: "���������� (%)" },
+    ],
+    rows: viewRows,
+  };
+}
+
 function toFiniteNumber(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
@@ -207,9 +244,9 @@ function buildSafeAggregateAnswerFromToolResults(toolResults) {
 
   if (rows.length === 0) {
     return {
-      fact: "Недостаточно данных для безопасного ответа: детальные строки были скрыты политикой DLP.",
-      conclusion: "Невозможно построить достоверный список или таблицу без раскрытия чувствительных данных.",
-      action: "Уточните запрос с безопасным фильтром (например, по подразделению или организации) либо используйте агрегированные показатели.",
+      fact: "������������ ������ ��� ����������� ������: ��������� ������ ���� ������ ��������� DLP.",
+      conclusion: "���������� ��������� ����������� ������ ��� ������� ��� ��������� �������������� ������.",
+      action: "�������� ������ � ���������� �������� (��������, �� ������������� ��� �����������) ���� ����������� �������������� ����������.",
     };
   }
 
@@ -219,14 +256,14 @@ function buildSafeAggregateAnswerFromToolResults(toolResults) {
 
   return {
     fact:
-      `Детальные данные по сотрудникам скрыты политикой DLP. ` +
-      `Доступна безопасная сводка: записей ${rows.length}, суммарный факт ${totalFact.toFixed(2)} ч, ` +
-      `суммарный план ${totalPlan.toFixed(2)} ч.`,
+      `��������� ������ �� ����������� ������ ��������� DLP. ` +
+      `�������� ���������� ������: ������� ${rows.length}, ��������� ���� ${totalFact.toFixed(2)} �, ` +
+      `��������� ���� ${totalPlan.toFixed(2)} �.`,
     conclusion:
       utilizationPct == null
-        ? "Невозможно вычислить процент выполнения, так как плановые часы отсутствуют."
-        : `Интегральное выполнение плана составляет ${utilizationPct.toFixed(2)}%.`,
-    action: "Чтобы получить персональные детали, задайте фильтр по конкретному сотруднику/подразделению/организации.",
+        ? "���������� ��������� ������� ����������, ��� ��� �������� ���� �����������."
+        : `������������ ���������� ����� ���������� ${utilizationPct.toFixed(2)}%.`,
+    action: "����� �������� ������������ ������, ������� ������ �� ����������� ����������/�������������/�����������.",
   };
 }
 
@@ -291,9 +328,9 @@ function collectForecastTrace(allToolResults) {
 function fallbackAnswer() {
   return {
     answer: {
-      fact: "Сожалею, но пока не могу ответить на ваш вопрос.",
-      conclusion: "Агент не смог получить корректный ответ от модели за допустимое число шагов.",
-      action: "Попробуйте переформулировать вопрос или переключиться в режим быстрого ответа.",
+      fact: "�������, �� ���� �� ���� �������� �� ��� ������.",
+      conclusion: "����� �� ���� �������� ���������� ����� �� ������ �� ���������� ����� �����.",
+      action: "���������� ����������������� ������ ��� ������������� � ����� �������� ������.",
     },
     artifacts: [],
   };
@@ -337,7 +374,7 @@ async function runAgent({ question, filters, requestId, dlpSession, modelTraceHo
       ok: false,
       requestId,
       errorCode: "provider_not_configured",
-      message: "API-ключ OpenRouter не настроен на сервере.",
+      message: "API-���� OpenRouter �� �������� �� �������.",
       trace: { ...createTrace(), failureReason: "provider_not_configured" },
     };
   }
@@ -430,7 +467,7 @@ async function runAgent({ question, filters, requestId, dlpSession, modelTraceHo
           ok: false,
           requestId,
           errorCode: "dlp_blocked",
-          message: "Результаты инструментов содержат секреты и заблокированы политикой DLP.",
+          message: "���������� ������������ �������� ������� � ������������� ��������� DLP.",
           trace: { ...trace, failureReason: "dlp_blocked_tool_results" },
         };
       }
@@ -440,11 +477,20 @@ async function runAgent({ question, filters, requestId, dlpSession, modelTraceHo
       messages.push({ role: "user", content: toolMsg });
 
       if (shouldForceGroundedFallback(modelToolResults)) {
+        const tableArtifact = buildUserTableArtifactFromToolResults(toolResults);
+        const fallbackAnswer = tableArtifact
+          ? {
+              fact: "�� ������ �������� ����������� ������ ����������� � ������ � ������ �����������.",
+              conclusion:
+                "��������� ������ �������� ������������; � ������ ��������� ������������ ������ �� ������������.",
+              action: "��� ������� ������� ������� ������ �� ����������, ������������� ��� �����������.",
+            }
+          : buildSafeAggregateAnswerFromToolResults(toolResults);
         return {
           ok: true,
           requestId,
-          answer: buildSafeAggregateAnswerFromToolResults(toolResults),
-          artifacts: [],
+          answer: fallbackAnswer,
+          artifacts: tableArtifact ? [tableArtifact] : [],
           trace: { ...trace, ...(collectForecastTrace(allToolResults) || {}) },
         };
       }

@@ -1,49 +1,57 @@
 "use strict";
 
-const dictionary = require("./dictionary-index");
-const morphFio = require("./morph-fio");
-const structural = require("./structural");
-const nerEngine = require("./ner-engine");
+const mlEngine = require("./ner-engine");
+const regexBackstop = require("./regex-backstop");
 
+// Single source of truth for ML/regex span priorities. Higher = stronger.
 const RULE_PRIORITIES = Object.freeze({
-  dictionary_employee: 200,
-  dictionary_org: 195,
-  dictionary_department: 190,
-  dictionary_installation: 185,
-  morph_fio: 170,
-  structural_org: 160,
-  structural_location: 155,
-  ner_person: 150,
-  ner_org: 145,
-  ner_location: 140,
+  // Secrets (block).
+  regex_secret_openrouter_api_key: 300,
+  regex_secret_generic_api_key: 290,
+  regex_secret_bearer_token: 280,
+  regex_secret_pem: 275,
+  regex_secret_aws_access_key: 274,
+  regex_secret_jwt: 273,
+  ml_secret: 270,
+
+  // Structural PII (regex backstop).
+  regex_email: 165,
+  regex_phone: 130,
+  regex_equipment_code: 145,
+
+  // ML PII (semantic).
+  ml_email: 160,
+  ml_phone: 125,
+  ml_equipment_code: 140,
+  ml_person: 170,
+  ml_org: 168,
+  ml_location: 166,
 });
 
 const RULE_ACTIONS = Object.freeze({
-  dictionary_employee: "tokenize",
-  dictionary_org: "tokenize",
-  dictionary_department: "tokenize",
-  dictionary_installation: "tokenize",
-  morph_fio: "tokenize",
-  structural_org: "tokenize",
-  structural_location: "tokenize",
-  ner_person: "tokenize",
-  ner_org: "tokenize",
-  ner_location: "tokenize",
+  regex_secret_openrouter_api_key: "block",
+  regex_secret_generic_api_key: "block",
+  regex_secret_bearer_token: "block",
+  regex_secret_pem: "block",
+  regex_secret_aws_access_key: "block",
+  regex_secret_jwt: "block",
+  ml_secret: "block",
+
+  regex_email: "tokenize",
+  regex_phone: "tokenize",
+  regex_equipment_code: "tokenize",
+
+  ml_email: "tokenize",
+  ml_phone: "tokenize",
+  ml_equipment_code: "tokenize",
+  ml_person: "tokenize",
+  ml_org: "tokenize",
+  ml_location: "tokenize",
 });
 
 let _initialized = false;
+let _initializing = null;
 let _bootStats = null;
-
-function parseBool(value, fallback) {
-  if (value == null) return fallback;
-  const v = String(value).trim().toLowerCase();
-  if (!v) return fallback;
-  return !["0", "false", "off", "no"].includes(v);
-}
-
-function isLayerEnabled(envVar, fallback) {
-  return parseBool(process.env[envVar], fallback);
-}
 
 function annotate(match) {
   return {
@@ -51,74 +59,118 @@ function annotate(match) {
     end: match.end,
     value: match.value,
     ruleId: match.ruleId,
-    action: RULE_ACTIONS[match.ruleId] || "tokenize",
-    priority: RULE_PRIORITIES[match.ruleId] || 100,
+    source: match.source || "unknown",
+    action: RULE_ACTIONS[match.ruleId] || match.action || "tokenize",
+    priority: Number.isFinite(match.priority) ? match.priority : RULE_PRIORITIES[match.ruleId] || 100,
     score: typeof match.score === "number" ? match.score : null,
   };
 }
 
-function init({ force } = {}) {
+function effectivePriority(match) {
+  if (Number.isFinite(match.priority)) return match.priority;
+  return match.action === "block" ? 250 : 100;
+}
+
+function dedupSpans(matches) {
+  const sorted = [...matches].sort((a, b) => {
+    if (a.start !== b.start) return a.start - b.start;
+    const byPriority = effectivePriority(b) - effectivePriority(a);
+    if (byPriority !== 0) return byPriority;
+    const byLength = b.end - b.start - (a.end - a.start);
+    if (byLength !== 0) return byLength;
+    return String(a.ruleId).localeCompare(String(b.ruleId));
+  });
+
+  const selected = [];
+  for (const item of sorted) {
+    let overlaps = false;
+    for (const other of selected) {
+      if (item.start < other.end && other.start < item.end) {
+        overlaps = true;
+        break;
+      }
+    }
+    if (!overlaps) selected.push(item);
+  }
+  return selected;
+}
+
+async function init({ force } = {}) {
   if (_initialized && !force) return _bootStats;
-  morphFio.reset();
-  const dictStats = dictionary.init({ force: true });
-  morphFio.learnFromDictionary(dictionary.getEmployees());
-  _bootStats = {
-    initializedAt: new Date().toISOString(),
-    dictionary: dictStats,
-    morphFio: morphFio.getStats(),
-    ner: nerEngine.getStatus(),
-  };
-  _initialized = true;
-  return _bootStats;
+  if (_initializing) return _initializing;
+
+  if (force) {
+    _initialized = false;
+    _bootStats = null;
+    if (typeof mlEngine.reset === "function") mlEngine.reset();
+  }
+
+  _initializing = (async () => {
+    const ml = await mlEngine.warmup();
+    _bootStats = {
+      initializedAt: new Date().toISOString(),
+      ml: { ...ml, status: mlEngine.getStatus() },
+      regexBackstop: regexBackstop.getStatus(),
+    };
+    _initialized = true;
+    return _bootStats;
+  })();
+
+  try {
+    return await _initializing;
+  } finally {
+    _initializing = null;
+  }
 }
 
 function getBootStats() {
-  if (!_initialized) init();
   return _bootStats;
 }
 
 function getRuntimeStatus() {
   return {
-    dictionary: dictionary.getStats(),
-    morphFio: morphFio.getStats(),
-    ner: nerEngine.getStatus(),
-    layers: {
-      dictionary: isLayerEnabled("DLP_DICT_ENABLED", true),
-      morphFio: isLayerEnabled("DLP_MORPH_FIO_ENABLED", true),
-      structural: isLayerEnabled("DLP_STRUCTURAL_ENABLED", true),
-      ner: isLayerEnabled("DLP_NER_ENABLED", false),
-    },
+    initialized: _initialized,
+    ml: mlEngine.getStatus(),
+    regexBackstop: regexBackstop.getStatus(),
+    failMode: mlEngine.getFailMode(),
+    ready: isReady(),
   };
 }
 
-async function detect(text, _ctx = {}) {
-  if (!_initialized) init();
+function isReady() {
+  if (!mlEngine.isEnabled()) return regexBackstop.isEnabled();
+  return mlEngine.isReady();
+}
+
+function shouldBlockOnUnready() {
+  if (mlEngine.isReady()) return false;
+  if (!mlEngine.isEnabled()) return false;
+  return mlEngine.getFailMode() === "closed";
+}
+
+async function detect(text, ctx = {}) {
+  if (!_initialized && !_initializing) {
+    // Fire-and-forget warmup if someone called detect before init.
+    init({ force: false }).catch(() => {});
+  }
   if (!text || typeof text !== "string") return [];
+
   const out = [];
 
-  if (isLayerEnabled("DLP_DICT_ENABLED", true)) {
-    for (const m of dictionary.findMatches(text)) out.push(annotate(m));
+  if (regexBackstop.isEnabled()) {
+    for (const m of regexBackstop.findMatches(text, ctx)) out.push(annotate(m));
   }
 
-  if (isLayerEnabled("DLP_MORPH_FIO_ENABLED", true)) {
-    const allowed = (full) => dictionary.hasEmployee(full);
-    for (const m of morphFio.findMatches(text, allowed)) out.push(annotate(m));
-  }
-
-  if (isLayerEnabled("DLP_STRUCTURAL_ENABLED", true)) {
-    for (const m of structural.findMatches(text)) out.push(annotate(m));
-  }
-
-  if (isLayerEnabled("DLP_NER_ENABLED", false)) {
+  if (mlEngine.isEnabled()) {
     try {
-      const nerOut = await nerEngine.findMatches(text);
-      for (const m of nerOut) out.push(annotate(m));
+      const mlOut = await mlEngine.findMatches(text);
+      for (const m of mlOut) out.push(annotate(m));
     } catch {
-      // Best-effort: NER must never break detection pipeline.
+      // ML must never break the pipeline. Regex-backstop already provided coverage.
     }
   }
 
-  return out;
+  return dedupSpans(out);
 }
 
 module.exports = {
@@ -126,6 +178,8 @@ module.exports = {
   detect,
   getBootStats,
   getRuntimeStatus,
+  isReady,
+  shouldBlockOnUnready,
   RULE_PRIORITIES,
   RULE_ACTIONS,
 };

@@ -13,6 +13,39 @@ Set-Location $root
 Write-Host "=== TOIR Dashboard Start ===" -ForegroundColor Cyan
 Write-Host "Project folder: $root"
 
+function Get-PortOwnerPid {
+  param([int]$Port)
+  try {
+    $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $conn) { return $null }
+    return [int]$conn.OwningProcess
+  } catch {
+    return $null
+  }
+}
+
+function Get-ProcessCommandLine {
+  param([int]$ProcessId)
+  try {
+    $p = Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -eq $ProcessId } | Select-Object -First 1
+    if ($null -eq $p) { return "" }
+    return [string]$p.CommandLine
+  } catch {
+    return ""
+  }
+}
+
+function Get-ProcessNameById {
+  param([int]$ProcessId)
+  try {
+    $p = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $p) { return "" }
+    return [string]$p.ProcessName
+  } catch {
+    return ""
+  }
+}
+
 function Get-NodeLauncher {
   if (Get-Command node -ErrorAction SilentlyContinue) { return "node" }
   $candidates = @(
@@ -68,6 +101,7 @@ Write-Host "Starting local server..." -ForegroundColor Yellow
 Write-Host "Stop: Ctrl+C" -ForegroundColor DarkGray
 
 $nodeCmd = Get-NodeLauncher
+$startedApiProcess = $null
 if ($nodeCmd) {
   $apiEntry = Join-Path $root "server\index.js"
   $apiEntryExists = Test-Path -LiteralPath $apiEntry -PathType Leaf
@@ -91,15 +125,22 @@ if ($nodeCmd) {
       }
     }
     Write-Host "Starting API on http://localhost:8787 (separate window) ..." -ForegroundColor Yellow
-    if ($nodeCmd -eq "node") {
-      Start-Process powershell -ArgumentList @(
-        "-NoProfile",
-        "-ExecutionPolicy", "Bypass",
-        "-Command", "Set-Location -LiteralPath '$root'; node server/index.js; Write-Host ''; Write-Host 'API stopped. Press Enter to close.' -ForegroundColor DarkGray; Read-Host"
-      ) -WindowStyle Normal | Out-Null
-    } else {
-      Start-Process -FilePath $nodeCmd -WorkingDirectory $root -ArgumentList @("server/index.js") | Out-Null
+    $existingPid = Get-PortOwnerPid -Port 8787
+    if ($existingPid) {
+      $existingCmd = Get-ProcessCommandLine -ProcessId $existingPid
+      $existingName = Get-ProcessNameById -ProcessId $existingPid
+      $canStopByCommand = $existingCmd -match "server/index\.js"
+      $canStopByName = $existingName -match "^(node|cmd)$"
+      if ($canStopByCommand -or $canStopByName) {
+        try {
+          Stop-Process -Id $existingPid -Force -ErrorAction Stop
+          Start-Sleep -Milliseconds 500
+        } catch {
+          Write-Warning "Failed to stop existing process on port 8787 (PID $existingPid): $($_.Exception.Message)"
+        }
+      }
     }
+    $startedApiProcess = Start-Process -FilePath $nodeCmd -WorkingDirectory $root -ArgumentList @("server/index.js") -PassThru
     Start-Sleep -Seconds 2
   } else {
     Write-Warning "server/index.js not found. Cloud AI mode via OpenRouter API will be unavailable."
@@ -108,4 +149,27 @@ if ($nodeCmd) {
   Write-Warning "Node.js is not found. Cloud AI mode via OpenRouter API will be unavailable."
 }
 
-& ".\scripts\serve.ps1" -Port $Port -OpenBrowser
+if ($startedApiProcess -and -not $global:DashboardApiCleanupRegistered) {
+  Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
+    try {
+      if ($null -ne $startedApiProcess -and -not $startedApiProcess.HasExited) {
+        Stop-Process -Id $startedApiProcess.Id -Force -ErrorAction Stop
+      }
+    } catch {}
+  } | Out-Null
+  $global:DashboardApiCleanupRegistered = $true
+}
+
+try {
+  & ".\scripts\serve.ps1" -Port $Port -OpenBrowser
+} finally {
+  if ($startedApiProcess) {
+    try {
+      if (-not $startedApiProcess.HasExited) {
+        Stop-Process -Id $startedApiProcess.Id -Force -ErrorAction Stop
+      }
+    } catch {
+      Write-Warning "Failed to stop API child process (PID $($startedApiProcess.Id)): $($_.Exception.Message)"
+    }
+  }
+}
