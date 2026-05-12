@@ -50,6 +50,9 @@ app.use(
 );
 app.use(express.json({ limit: "50mb" }));
 
+const reportsRouter = require("./reports/router");
+app.use("/api/reports", reportsRouter);
+
 function validateQuestion(question) {
   if (typeof question !== "string") return "Поле question должно быть строкой.";
   const value = question.trim();

@@ -32,6 +32,15 @@ MONTHS_ORDER = [
     "Сентябрь 2025", "Октябрь 2025", "Ноябрь 2025", "Декабрь 2025",
 ]
 
+RU_MONTH_NAMES = [
+    "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+    "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
+]
+
+
+def excel_month_label(dt: datetime) -> str:
+    return f"{RU_MONTH_NAMES[dt.month - 1]} {dt.year}"
+
 def cell(v):
     if v is None:
         return None
@@ -190,6 +199,44 @@ def parse_mtbf_mttr(wb):
 
     mttr = {k: round(sum(v) / len(v), 1) for k, v in mttr_lists.items() if v}
     return mtbf, mttr
+
+
+def parse_repair_events(wb):
+    """Строки ремонта с датами начала/окончания (для гипотез R7/R8/R11/R17)."""
+    ws = wb["Наработка на отказ"]
+    rows = all_rows(ws)
+    events = []
+    current_equip = None
+
+    for r in rows:
+        if len(r) < 12:
+            continue
+        first = cell(r[0])
+        if first is None:
+            continue
+        if str(first).startswith("Параметры"):
+            continue
+
+        if is_small_int_defect_count(r[10]) and r[11] is not None:
+            hdr = parse_hours(r[11])
+            if hdr > 0:
+                current_equip = first
+                continue
+
+        if current_equip and len(r) > 6:
+            d0 = r[3] if isinstance(r[3], datetime) else _parse_excel_datetime(r[3])
+            d1 = r[6] if isinstance(r[6], datetime) else _parse_excel_datetime(r[6])
+            if isinstance(d0, datetime) and isinstance(d1, datetime) and d1 > d0:
+                h = (d1 - d0).total_seconds() / 3600.0
+                if 0 < h <= 720:
+                    events.append({
+                        "equipment": current_equip,
+                        "start": d0.isoformat(sep="T", timespec="seconds"),
+                        "end": d1.isoformat(sep="T", timespec="seconds"),
+                        "duration_h": round(h, 2),
+                        "month": excel_month_label(d0),
+                    })
+    return events
 
 
 def _parse_excel_datetime(val):
@@ -494,6 +541,7 @@ def main():
     analysis_costs = parse_analysis(wb_analysis)
     ktg_data = parse_ktg(wb_ktg)
     mtbf_h, mttr_h = parse_mtbf_mttr(wb_fail)
+    repair_events = parse_repair_events(wb_fail)
     material_labor = parse_material_labor_monthly(wb_analysis)
     wear_image = extract_wear_report_image()
 
@@ -555,6 +603,7 @@ def main():
             },
             "ktg": ktg_data,
             "equipmentDefects": equip_defects,
+            "repairEvents": repair_events,
         },
         "analysis": {
             "top3_cost_leaders": [

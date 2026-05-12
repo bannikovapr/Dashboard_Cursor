@@ -1,8 +1,10 @@
 ﻿"use strict";
 
+const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 const dataStore = require("./data-store");
+const Diagnostics = require("../../js/toir-diagnostics");
 
 const TOOL_DEFINITIONS = [
   {
@@ -194,6 +196,25 @@ const TOOL_DEFINITIONS = [
       required: ["query"],
     },
   },
+  {
+    name: "get_diagnostics_summary",
+    description:
+      "Сводка статистических гипотез (диагностик) ТОиР: сколько сработало, сколько с недостаточными данными, полный список результатов. Учитывает filters.period и filters.class как на дашборде.",
+    parameters: {
+      type: "object",
+      properties: {
+        filters: {
+          type: "object",
+          description: "Срез: period (all|h1|h2), class (класс оборудования или __all__).",
+        },
+        only_triggered: {
+          type: "boolean",
+          description: "Если true — в ответе только массив triggered и summary (без полного списка и not_triggered).",
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 function executeGetKpis() {
@@ -201,6 +222,29 @@ function executeGetKpis() {
     kpis: dataStore.getKpis(),
     meta: dataStore.getMeta(),
     datasets_available: dataStore.getDatasetNames(),
+  };
+}
+
+function executeGetDiagnosticsSummary(params) {
+  const p = params || {};
+  const filters = p.filters || {};
+  const period = filters.period || "all";
+  const cls = filters.class != null ? filters.class : "__all__";
+  const filePath = path.resolve(__dirname, "../../data/toir.json");
+  const raw = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  const diagnostics = Diagnostics.analyzeAll(raw, { period, class: cls });
+  const summary = Diagnostics.summarize(diagnostics);
+  if (p.only_triggered) {
+    return {
+      summary,
+      triggered: diagnostics.filter((d) => d.status === Diagnostics.STATUS.TRIGGERED),
+    };
+  }
+  return {
+    summary,
+    diagnostics,
+    triggered: diagnostics.filter((d) => d.status === Diagnostics.STATUS.TRIGGERED),
+    not_triggered: diagnostics.filter((d) => d.status === Diagnostics.STATUS.NOT_TRIGGERED),
   };
 }
 
@@ -462,6 +506,7 @@ function executeForecastMetric(params) {
 
 const EXECUTORS = {
   get_kpis: executeGetKpis,
+  get_diagnostics_summary: executeGetDiagnosticsSummary,
   forecast_metric: executeForecastMetric,
   query_data: executeQueryData,
   compute: executeCompute,

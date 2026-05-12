@@ -5,6 +5,9 @@ node_modules/
 tmp/
 logs/
 
+# Локальные снимки отчётов ТОиР (создаёт сервер)
+.reports/
+
 # Cursor debug dumps (may contain request payloads)
 .cursor/debug*.log
 

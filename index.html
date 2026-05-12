@@ -59,6 +59,8 @@
               <button type="button" class="tab" data-tab="costs">Затраты</button>
               <button type="button" class="tab" data-tab="reliability">Надёжность</button>
               <button type="button" class="tab" data-tab="equipment">Оборудование</button>
+              <button type="button" class="tab" data-tab="diagnostics">Диагностики</button>
+              <button type="button" class="tab" data-tab="reports">Отчёт ТОиР</button>
             </div>
           </div>
         </header>
@@ -214,6 +216,57 @@
               </div>
             </div>
           </div>
+
+          <div id="panel-charts-diagnostics" class="panel-charts" data-panel="diagnostics" hidden>
+            <div class="diag-summary-card card">
+              <div class="chart-title">Диагностики и гипотезы</div>
+              <div class="chart-sub" id="diagCoverage">Срез совпадает с периодом и классом в панели выше.</div>
+              <div class="diag-summary-row">
+                <div class="diag-summary-cell diag-summary-cell--triggered">
+                  <div class="diag-summary-label">Сработало</div>
+                  <div class="diag-summary-value" id="diagCountTriggered">0</div>
+                </div>
+                <div class="diag-summary-cell diag-summary-cell--insufficient">
+                  <div class="diag-summary-label">Недостаточно данных</div>
+                  <div class="diag-summary-value" id="diagCountInsufficient">0</div>
+                </div>
+                <div class="diag-summary-cell diag-summary-cell--total">
+                  <div class="diag-summary-label">Всего гипотез</div>
+                  <div class="diag-summary-value" id="diagCountTotal">0</div>
+                </div>
+              </div>
+              <div class="diag-legend diag-legend--embedded diag-legend--compact" aria-label="Краткая легенда">
+                <div class="diag-legend-title">Легенда</div>
+                <p class="diag-legend-inline"><b>R</b> — гипотезы R1–R18. <b>K</b> — проверки K1–K4 по KPI.</p>
+                <p class="diag-legend-inline">
+                  <span class="diag-chip diag-chip--triggered">Сработала</span>
+                  <span class="diag-chip diag-chip--ok">Не сработала</span>
+                  <span class="diag-chip diag-chip--insufficient">Нет данных</span>
+                  —
+                  итог расчёта. Рядом —
+                  <span class="diag-confidence diag-confidence--high">уверенность</span> в выводе (объём опоры в таблице/графике).
+                </p>
+              </div>
+            </div>
+            <div id="diagnosticsList" class="diag-list"></div>
+          </div>
+
+          <div id="panel-charts-reports" class="panel-charts" data-panel="reports" hidden>
+            <div class="report-layout">
+              <aside class="report-sidebar card">
+                <div class="report-sidebar-head">
+                  <h3>Отчёты</h3>
+                  <button type="button" id="reportsRefreshBtn" class="report-sidebar-icon" title="Обновить список">↻</button>
+                </div>
+                <button type="button" id="reportsCreateBtn" class="btn-primary report-sidebar-cta">
+                  + Создать отчёт по текущему срезу
+                </button>
+                <div id="reportsStatus" class="report-status"></div>
+                <div id="reportsList" class="reports-list"></div>
+              </aside>
+              <section class="report-main card" id="reportView"></section>
+            </div>
+          </div>
         </div>
 
         <div id="agentWorkspace" class="agent-workspace" hidden></div>
@@ -284,8 +337,12 @@
       </aside>
     </div>
 
+    <script src="js/report-export-layout.js"></script>
+    <script src="js/report-export-html.js"></script>
     <script src="js/toir-utils.js"></script>
     <script src="js/toir-charts.js"></script>
+    <script src="js/toir-diagnostics.js"></script>
+    <script src="js/toir-reports.js"></script>
     <script src="js/toir-app.js"></script>
   </body>
 </html>

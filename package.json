@@ -12,6 +12,8 @@
     "smoke:agent-dlp": "node scripts/smoke-agent-dlp.js",
     "smoke:hardening": "node scripts/smoke-hardening.js",
     "smoke:filter-trace": "node scripts/smoke-filter-trace.js",
+    "smoke:reports": "node scripts/smoke-reports.js",
+    "smoke:diagnostics": "node scripts/smoke-diagnostics.js",
     "smoke:security-suite": "node scripts/smoke-security-suite.js",
     "smoke:failclosed-api": "node scripts/smoke-failclosed-api.js",
     "bench:ml-detector": "node scripts/bench-ml-detector.js",
@@ -25,7 +27,9 @@
   "dependencies": {
     "@xenova/transformers": "2.17.2",
     "cors": "^2.8.5",
+    "docx": "^9.6.1",
     "dotenv": "^16.4.5",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "pdfmake": "^0.2.23"
   }
 }

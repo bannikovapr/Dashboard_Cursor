@@ -439,11 +439,364 @@
     return scored.sort((a, b) => b.score - a.score).slice(0, limit);
   }
 
+  const diagChartInstances = new Map();
+
+  function disposeDiagCharts() {
+    diagChartInstances.forEach((chart) => {
+      try {
+        if (chart && typeof chart.destroy === "function") chart.destroy();
+      } catch (_) {}
+    });
+    diagChartInstances.clear();
+  }
+
+  function diagFormatValue(value, format) {
+    if (value === null || value === undefined || (typeof value === "number" && !Number.isFinite(value))) {
+      return "—";
+    }
+    if (format === "pct") {
+      const v = Number(value);
+      return Number.isFinite(v) ? `${(v * 100).toFixed(1)}%` : "—";
+    }
+    if (format === "money") {
+      const v = Number(value);
+      return Number.isFinite(v) ? v.toLocaleString("ru-RU", { maximumFractionDigits: 0 }) : "—";
+    }
+    if (format === "hours" || format === "num1") {
+      const v = Number(value);
+      return Number.isFinite(v)
+        ? v.toLocaleString("ru-RU", { maximumFractionDigits: 1, minimumFractionDigits: 1 })
+        : "—";
+    }
+    if (format === "int") {
+      const v = Number(value);
+      return Number.isFinite(v) ? v.toLocaleString("ru-RU", { maximumFractionDigits: 0 }) : "—";
+    }
+    if (format === "ratio") {
+      const v = Number(value);
+      return Number.isFinite(v) ? v.toFixed(2) : "—";
+    }
+    return String(value);
+  }
+
+  function renderDiagEvidence(container, evidence, diagId) {
+    if (!evidence) return;
+    if (evidence.type === "table") {
+      const wrap = document.createElement("div");
+      wrap.className = "diag-evidence diag-evidence--table";
+      if (evidence.title) {
+        const cap = document.createElement("div");
+        cap.className = "diag-evidence-title";
+        cap.textContent = evidence.title;
+        wrap.appendChild(cap);
+      }
+      const table = document.createElement("table");
+      const thead = document.createElement("thead");
+      const tr = document.createElement("tr");
+      (evidence.columns || []).forEach((c) => {
+        const th = document.createElement("th");
+        th.textContent = c.label || c.key;
+        tr.appendChild(th);
+      });
+      thead.appendChild(tr);
+      table.appendChild(thead);
+      const tbody = document.createElement("tbody");
+      (evidence.rows || []).forEach((row) => {
+        const trb = document.createElement("tr");
+        (evidence.columns || []).forEach((c) => {
+          const td = document.createElement("td");
+          td.textContent = diagFormatValue(row[c.key], c.format);
+          trb.appendChild(td);
+        });
+        tbody.appendChild(trb);
+      });
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      container.appendChild(wrap);
+      return;
+    }
+    if (evidence.type === "chart") {
+      const wrap = document.createElement("div");
+      wrap.className = "diag-evidence diag-evidence--chart";
+      if (evidence.title) {
+        const cap = document.createElement("div");
+        cap.className = "diag-evidence-title";
+        cap.textContent = evidence.title;
+        wrap.appendChild(cap);
+      }
+      const chartEl = document.createElement("div");
+      chartEl.className = "diag-evidence-chart";
+      chartEl.id = `diag-chart-${diagId}`;
+      wrap.appendChild(chartEl);
+      container.appendChild(wrap);
+      try {
+        if (typeof ApexCharts !== "undefined") {
+          const opts = {
+            chart: {
+              type: evidence.chartType || "bar",
+              height: 220,
+              toolbar: { show: false },
+              parentHeightOffset: 0,
+            },
+            series: evidence.series || [],
+            xaxis: { categories: evidence.categories || [] },
+            dataLabels: { enabled: false },
+            grid: { padding: { left: 0, right: 0, top: 4, bottom: 0 } },
+            legend: { position: "top", fontSize: "11px" },
+          };
+          const ch = new ApexCharts(chartEl, opts);
+          ch.render();
+          diagChartInstances.set(diagId, ch);
+        }
+      } catch (_) {}
+    }
+  }
+
+  function diagStatusLabel(status) {
+    if (status === "triggered") return "Сработала";
+    if (status === "not_triggered") return "Не сработала";
+    return "Нет данных";
+  }
+
+  function diagConfidenceLabel(conf) {
+    if (conf === "high") return "Уверенность: высокая";
+    if (conf === "low") return "Уверенность: низкая";
+    return "Уверенность: средняя";
+  }
+
+  function diagEvidenceIsEmpty(evidence) {
+    if (!evidence) return true;
+    if (evidence.type === "table") {
+      return !Array.isArray(evidence.rows) || evidence.rows.length === 0;
+    }
+    if (evidence.type === "chart") {
+      const cats = Array.isArray(evidence.categories) ? evidence.categories : [];
+      const series = Array.isArray(evidence.series) ? evidence.series : [];
+      const hasData = series.some((s) =>
+        Array.isArray(s && s.data) && s.data.some((v) => Number.isFinite(Number(v)) && Number(v) !== 0)
+      );
+      return !cats.length || !hasData;
+    }
+    return false;
+  }
+
+  function diagBasisFootnote(lines) {
+    if (!Array.isArray(lines) || !lines.length) return "";
+    const joined = lines
+      .map((s) => String(s || "").replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .join(" · ");
+    if (!joined) return "";
+    return joined.length > 240 ? `${joined.slice(0, 237)}…` : joined;
+  }
+
+  function renderDiagCard(diag) {
+    const card = document.createElement("div");
+    card.className = `card diag-card diag-card--${diag.status}`;
+    card.dataset.diagId = diag.id;
+
+    const head = document.createElement("div");
+    head.className = "diag-card-head";
+
+    const title = document.createElement("div");
+    title.className = "diag-card-title";
+    const idEl = document.createElement("span");
+    idEl.className = "diag-card-id";
+    idEl.textContent = diag.id;
+    const titleText = document.createElement("span");
+    titleText.className = "diag-card-titletext";
+    titleText.textContent = diag.title;
+    title.appendChild(idEl);
+    title.appendChild(titleText);
+
+    const badge = document.createElement("span");
+    badge.className = `diag-badge diag-badge--${diag.status}`;
+    badge.textContent = diagStatusLabel(diag.status);
+
+    const confEl = document.createElement("span");
+    const conf = diag.confidence || "medium";
+    confEl.className = `diag-confidence diag-confidence--${conf}`;
+    confEl.textContent = diagConfidenceLabel(conf);
+
+    const badges = document.createElement("div");
+    badges.className = "diag-card-badges";
+    badges.appendChild(badge);
+    badges.appendChild(confEl);
+
+    head.appendChild(title);
+    head.appendChild(badges);
+
+    const body = document.createElement("div");
+    body.className = "diag-card-body";
+
+    const summary = document.createElement("div");
+    summary.className = "diag-card-summary";
+    summary.innerHTML = `<b>Факт.</b> ${diag.summary || ""}`;
+    body.appendChild(summary);
+
+    if (diag.recommendation) {
+      const rec = document.createElement("div");
+      rec.className = "diag-card-recommendation";
+      rec.innerHTML = `<b>Что делать.</b> ${diag.recommendation}`;
+      body.appendChild(rec);
+    }
+
+    if (diag.evidence_notes && diag.evidence_notes.length) {
+      const notes = document.createElement("ul");
+      notes.className = "diag-card-notes";
+      diag.evidence_notes.forEach((n) => {
+        const li = document.createElement("li");
+        li.textContent = n;
+        notes.appendChild(li);
+      });
+      body.appendChild(notes);
+    }
+
+    if (diag.warning && diag.status !== "insufficient_data") {
+      const warn = document.createElement("div");
+      warn.className = "diag-card-warning";
+      warn.textContent = diag.warning;
+      body.appendChild(warn);
+    }
+
+    const explainLines = Array.isArray(diag.explanation) ? diag.explanation : [];
+    if (explainLines.length) {
+      const explain = document.createElement("details");
+      explain.className = "diag-card-explain";
+      const sumEx = document.createElement("summary");
+      sumEx.textContent = "Развёрнуто: логика проверки";
+      explain.appendChild(sumEx);
+      const exBody = document.createElement("div");
+      exBody.className = "diag-card-explain-body";
+      explainLines.forEach((para) => {
+        const p = document.createElement("p");
+        p.textContent = para;
+        exBody.appendChild(p);
+      });
+      explain.appendChild(exBody);
+      body.appendChild(explain);
+    }
+
+    const metLines = Array.isArray(diag.confidence_metrics) ? diag.confidence_metrics : [];
+    const basisText = diagBasisFootnote(metLines);
+    if (basisText) {
+      const basis = document.createElement("div");
+      basis.className = "diag-card-basis";
+      basis.textContent = basisText;
+      body.appendChild(basis);
+    }
+
+    if (diag.evidence && !diagEvidenceIsEmpty(diag.evidence)) {
+      const details = document.createElement("details");
+      details.className = "diag-card-details";
+      const sum = document.createElement("summary");
+      sum.textContent = "Показать данные";
+      details.appendChild(sum);
+      const evWrap = document.createElement("div");
+      evWrap.className = "diag-card-evidence-wrap";
+      details.appendChild(evWrap);
+      details.addEventListener("toggle", () => {
+        if (details.open && !evWrap.dataset.rendered) {
+          renderDiagEvidence(evWrap, diag.evidence, diag.id);
+          evWrap.dataset.rendered = "1";
+        }
+      });
+      body.appendChild(details);
+    }
+
+    card.appendChild(head);
+    card.appendChild(body);
+    return card;
+  }
+
+  let lastDiagState = null;
+  let lastDiagWideMode = null;
+
+  function isDiagWide() {
+    return !!(window.matchMedia && window.matchMedia("(min-width: 721px)").matches);
+  }
+
+  function renderDiagnostics(data, period, classFilter) {
+    const Diag = window.ToirDiagnostics;
+    const list = document.getElementById("diagnosticsList");
+    if (!list || !Diag) return;
+
+    lastDiagState = { data, period: period || "all", class: classFilter || "__all__" };
+    lastDiagWideMode = isDiagWide();
+
+    disposeDiagCharts();
+    list.innerHTML = "";
+
+    const results = Diag.analyzeAll(data, { period: lastDiagState.period, class: lastDiagState.class });
+    const summary = Diag.summarize(results);
+
+    const cnTr = document.getElementById("diagCountTriggered");
+    const cnIn = document.getElementById("diagCountInsufficient");
+    const cnTot = document.getElementById("diagCountTotal");
+    if (cnTr) cnTr.textContent = String(summary.triggered);
+    if (cnIn) cnIn.textContent = String(summary.insufficient_data);
+    if (cnTot) cnTot.textContent = String(summary.total);
+
+    const cov = document.getElementById("diagCoverage");
+    if (cov) {
+      const classNote = classFilter && classFilter !== "__all__" ? ` · класс: ${classFilter}` : "";
+      const periodLabel = period === "h1" ? "1-е полугодие 2025" : period === "h2" ? "2-е полугодие 2025" : "12 мес.";
+      cov.textContent = `Сработало ${summary.triggered} из ${summary.total} гипотез. ` +
+        `Недостаточно данных для ${summary.insufficient_data} гипотез. ` +
+        `Срез: ${periodLabel}${classNote}.`;
+    }
+
+    const order = { triggered: 0, not_triggered: 1, insufficient_data: 2 };
+    const sorted = [...results].sort((a, b) => {
+      const sa = order[a.status] !== undefined ? order[a.status] : 9;
+      const sb = order[b.status] !== undefined ? order[b.status] : 9;
+      if (sa !== sb) return sa - sb;
+      return String(a.id).localeCompare(String(b.id), "en");
+    });
+
+    if (lastDiagWideMode) {
+      const leftCol = document.createElement("div");
+      leftCol.className = "diag-column";
+      const rightCol = document.createElement("div");
+      rightCol.className = "diag-column";
+      list.appendChild(leftCol);
+      list.appendChild(rightCol);
+      sorted.forEach((diag, idx) => {
+        const target = idx % 2 === 0 ? leftCol : rightCol;
+        target.appendChild(renderDiagCard(diag));
+      });
+    } else {
+      sorted.forEach((diag) => {
+        list.appendChild(renderDiagCard(diag));
+      });
+    }
+  }
+
+  function reflowDiagnosticsIfNeeded() {
+    if (!lastDiagState) return;
+    const wide = isDiagWide();
+    if (wide === lastDiagWideMode) return;
+    renderDiagnostics(lastDiagState.data, lastDiagState.period, lastDiagState.class);
+  }
+
+  const TABS_WITHOUT_GLOBAL_TABLES = new Set(["diagnostics", "reports"]);
+  const TABS_WITHOUT_KPI_BLOCK = new Set(["reports"]);
+
   function applyTab(name) {
     document.querySelectorAll(".tab").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === name));
     document.querySelectorAll(".panel-charts").forEach((p) => {
       p.hidden = p.getAttribute("data-panel") !== name;
     });
+    const tablesRow = document.getElementById("tablesRow");
+    if (tablesRow) {
+      tablesRow.hidden = TABS_WITHOUT_GLOBAL_TABLES.has(name);
+    }
+    const kpiBlock = document.getElementById("kpiBlock");
+    if (kpiBlock) {
+      kpiBlock.hidden = TABS_WITHOUT_KPI_BLOCK.has(name);
+    }
+    const layoutEl = document.querySelector(".layout");
+    if (layoutEl) layoutEl.dataset.activeTab = name;
   }
 
   function wireUi(data) {
@@ -465,6 +818,17 @@
     function getActivePanelAnchor() {
       const activePanel = document.querySelector(".panel-charts:not([hidden])");
       if (!activePanel) return null;
+      const panelKind = activePanel.getAttribute("data-panel");
+      if (panelKind === "reports") {
+        const firstSection = activePanel.querySelector("#reportView .report-section");
+        if (firstSection) return firstSection;
+        const reportView = activePanel.querySelector("#reportView");
+        if (reportView) return reportView;
+        return activePanel;
+      }
+      if (panelKind === "diagnostics") {
+        return activePanel;
+      }
       const hero = activePanel.querySelector(".chart-card.chart-hero");
       if (hero) return hero;
       return (
@@ -473,6 +837,11 @@
         activePanel.querySelector(".charts-grid--3 .chart-card") ||
         activePanel.querySelector(".chart-card")
       );
+    }
+
+    function getActivePanelName() {
+      const activePanel = document.querySelector(".panel-charts:not([hidden])");
+      return activePanel?.getAttribute("data-panel") || null;
     }
 
     function syncAiSidebarToCostsChart() {
@@ -487,6 +856,13 @@
 
       const layout = document.querySelector(".layout");
       const anchor = getActivePanelAnchor();
+      const activePanelName = getActivePanelName();
+      if (activePanelName === "diagnostics") {
+        sidebar.style.alignSelf = "start";
+        sidebar.style.height = `${DESKTOP_AI_PANEL_FALLBACK_HEIGHT}px`;
+        sidebar.style.maxHeight = "none";
+        return;
+      }
       if (!layout || !anchor) {
         sidebar.style.alignSelf = "start";
         sidebar.style.height = `${DESKTOP_AI_PANEL_FALLBACK_HEIGHT}px`;
@@ -508,7 +884,8 @@
       const top = sidebarRect.top - layoutRect.top;
       let height = Math.round(desiredBottom - top);
       if (!Number.isFinite(height)) height = DESKTOP_AI_PANEL_FALLBACK_HEIGHT;
-      height = Math.max(DESKTOP_AI_PANEL_MIN_HEIGHT, height);
+      const minHeight = activePanelName === "reports" ? 320 : DESKTOP_AI_PANEL_MIN_HEIGHT;
+      height = Math.max(minHeight, height);
 
       sidebar.style.alignSelf = "start";
       sidebar.style.height = `${height}px`;
@@ -528,6 +905,9 @@
         applyTab(btn.dataset.tab);
         Charts.resizeAll();
         scheduleSyncAiSidebar();
+        if (btn.dataset.tab === "reports" && window.ToirReports && typeof window.ToirReports.onTabActivated === "function") {
+          window.ToirReports.onTabActivated();
+        }
       });
     });
 
@@ -536,6 +916,7 @@
       resizeTimer = setTimeout(() => {
         Charts.resizeAll();
         scheduleSyncAiSidebar();
+        reflowDiagnosticsIfNeeded();
       }, 120);
     });
 
@@ -715,6 +1096,8 @@
 
       renderTables(agg, topProblemRows(data, monthSet, cls));
 
+      renderDiagnostics(data, periodSel?.value || "all", cls);
+
       document.getElementById("footerSource").textContent =
         `Источник: ${data.meta?.source || "—"} → data/toir.json · ${data.meta?.period || ""}`;
 
@@ -723,6 +1106,10 @@
         scheduleSyncAiSidebar();
       }, 120);
       setTimeout(scheduleSyncAiSidebar, 260);
+
+      if (window.ToirReports && typeof window.ToirReports.syncSliceFromDashboard === "function") {
+        window.ToirReports.syncSliceFromDashboard();
+      }
     };
 
     periodSel?.addEventListener("change", drain);
@@ -737,6 +1124,15 @@
 
     drain();
     applyTab("summary");
+
+    if (window.ToirReports && typeof window.ToirReports.init === "function") {
+      window.ToirReports.init({
+        getCurrentFilters: () => ({
+          period: periodSel?.value || "all",
+          class: classSel?.value || "__all__",
+        }),
+      });
+    }
 
     const layoutEl = document.querySelector(".layout");
     const mainEl = document.querySelector(".layout-main");
