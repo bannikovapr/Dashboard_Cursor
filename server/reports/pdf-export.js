@@ -117,8 +117,24 @@ async function buildReportPdfBuffer(document_) {
   const content = [];
 
   content.push({ text: L.title, style: "title" });
-  content.push({ text: L.documentKind, style: "subtitle" });
-  content.push({ text: L.audienceNote, style: "small", margin: [0, 0, 0, 8] });
+  content.push({
+    text: "Стратегический дашборд ТОиР · экспорт документа",
+    style: "tagline",
+    margin: [0, 0, 0, 10],
+  });
+  content.push({
+    text: [
+      { text: `Период: ${L.snapshot.periodLabel}`, color: "#0f172a" },
+      { text: "     ", color: "#94a3b8" },
+      { text: `Класс: ${L.snapshot.classLabel}`, color: "#0f172a" },
+      { text: "     ", color: "#94a3b8" },
+      { text: `Обновлён: ${L.preparedAtFormatted}`, color: "#0f172a" },
+      { text: "     ", color: "#94a3b8" },
+      { text: `Ревизий: ${L.revisionCount}`, color: "#0f172a" },
+    ],
+    style: "chipRow",
+    margin: [0, 0, 0, 14],
+  });
 
   content.push({ text: "Реквизиты документа", style: "h2" });
   content.push({
@@ -334,6 +350,8 @@ async function buildReportPdfBuffer(document_) {
     },
     styles: {
       title: { fontSize: 16, bold: true, color: "#0f172a" },
+      tagline: { fontSize: 9, color: "#64748b" },
+      chipRow: { fontSize: 8.5, color: "#0f172a" },
       subtitle: { fontSize: 11, bold: true, color: "#334155" },
       h2: { fontSize: 12, bold: true, color: "#0f172a", margin: [0, 8, 0, 4] },
       h3: { fontSize: 10, bold: true, color: "#1e293b", margin: [0, 6, 0, 3] },

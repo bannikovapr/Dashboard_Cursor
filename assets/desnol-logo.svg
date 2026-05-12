@@ -7,7 +7,7 @@
     <path d="M44 48 L74 18 L82 26 L52 56 Z" fill="#1ED760"/>
   </g>
   <!-- Wordmark -->
-  <text x="108" y="40" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="700" fill="#000000" letter-spacing="0.2">
-    Desnol
+  <text x="108" y="40" font-family="Montserrat, Inter, Arial, sans-serif" font-size="26" font-weight="700" fill="#000000" letter-spacing="0.02em">
+    Деснол
   </text>
 </svg>

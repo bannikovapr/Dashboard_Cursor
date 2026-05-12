@@ -211,9 +211,10 @@
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 12px;
+      border-left: 4px solid #94a3b8;
       box-shadow: var(--shadow);
-      padding: 18px 20px;
-      margin-bottom: 16px;
+      padding: 16px 18px;
+      margin-bottom: 14px;
       break-inside: auto;
     }
     .export-sheet-lead { font-size: 0.9rem; color: var(--muted); line-height: 1.5; margin: 0 0 14px; }
@@ -261,22 +262,13 @@
       ? `<img class="export-brand-logo" src="${logoDataUrl}" alt="" width="160" height="64" />`
       : "";
 
-    const metaRows = [
-      ["Вид документа", L.documentKind],
-      ["Идентификатор отчёта", L.reportId],
-      ["Число ревизий", String(L.revisionCount)],
-      ["Дата подготовки версии", L.preparedAtFormatted],
-      ["Период среза", L.snapshot.periodLabel],
-      ["Класс оборудования", L.snapshot.classLabel],
-      ["Источник данных", L.snapshot.sourceName],
-    ];
-    if (L.snapshot.organization) {
-      metaRows.splice(5, 0, ["Организация", L.snapshot.organization]);
-    }
-    const metaTableHtml =
-      `<table class="export-meta-table"><tbody>` +
-      metaRows.map(([k, v]) => `<tr><th scope="row">${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`).join("") +
-      `</tbody></table>`;
+    const heroChipsHtml =
+      `<div class="export-chips" aria-label="Параметры отчёта">` +
+      `<span class="export-chip">Период: <b>${escapeHtml(L.snapshot.periodLabel)}</b></span>` +
+      `<span class="export-chip">Класс: <b>${escapeHtml(L.snapshot.classLabel)}</b></span>` +
+      `<span class="export-chip">Обновлён: <b>${escapeHtml(L.preparedAtFormatted)}</b></span>` +
+      `<span class="export-chip">Ревизий: <b>${escapeHtml(String(L.revisionCount))}</b></span>` +
+      `</div>`;
 
     const tocHtml =
       `<nav class="export-toc" aria-label="Содержание">` +
@@ -298,9 +290,10 @@
       .map((s) => {
         const conf = s.confidence || "medium";
         const mandatory = s.mandatory ? '<span class="badge badge-mandatory">Обязательная</span>' : "";
+        const mandatoryCls = s.mandatory ? " export-section--mandatory" : "";
         const factsBlock =
           s.fact_bullets && s.fact_bullets.length
-            ? `<div class="export-facts-block"><div class="export-subtitle">Ключевые факты по данным</div><ul>${s.fact_bullets.map((b) => `<li>${renderInline(b)}</li>`).join("")}</ul></div>`
+            ? `<div class="export-subtitle">Подтверждающие факты</div><ul>${s.fact_bullets.map((b) => `<li>${renderInline(b)}</li>`).join("")}</ul>`
             : "";
         const refs =
           s.evidence_refs && s.evidence_refs.length
@@ -310,9 +303,8 @@
           s.warnings && s.warnings.length
             ? `<div class="export-warns"><div class="export-warns-title">Ограничения секции</div>${s.warnings.map((w) => `<div class="export-warn">${escapeHtml(w)}</div>`).join("")}</div>`
             : "";
-        const footHtml = refs || warns ? `<div class="export-section-foot">${refs}${warns}</div>` : "";
         return `
-      <article id="${s._anchor}" class="export-section export-section--${conf}">
+      <article id="${s._anchor}" class="export-section export-section--${conf}${mandatoryCls}">
         <header class="export-section-head">
           <h2 class="export-section-title"><span class="export-sec-num">${s._num}.</span> ${escapeHtml(s.title || "")}</h2>
           <div class="export-section-meta">
@@ -320,11 +312,10 @@
             <span class="badge badge-confidence-${conf}">Уверенность: ${escapeHtml(s._confidenceLabel)}</span>
           </div>
         </header>
-        <div class="export-section-core">
-          <div class="export-section-body">${renderMarkdown(s.body_markdown || "")}</div>
-          ${factsBlock}
-        </div>
-        ${footHtml}
+        <div class="export-section-body">${renderMarkdown(s.body_markdown || "")}</div>
+        ${factsBlock}
+        ${refs}
+        ${warns}
       </article>`;
       })
       .join("\n");
@@ -401,6 +392,7 @@
       box-shadow: var(--shadow);
       padding: 20px 22px;
       margin-bottom: 18px;
+      text-align: left;
     }
     .export-hero-top {
       display: flex;
@@ -411,6 +403,7 @@
     .export-brand-logo {
       max-height: 56px;
       width: auto;
+      height: auto;
       object-fit: contain;
       flex-shrink: 0;
     }
@@ -420,44 +413,37 @@
       font-weight: 700;
       color: var(--tab-active);
     }
-    .export-hero-titles .export-doc-kind {
-      margin: 0 0 8px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: var(--tab-active);
-    }
-    .export-audience {
+    .export-hero-titles .export-sub {
       margin: 0;
-      font-size: 0.88rem;
-      line-height: 1.5;
+      font-size: 0.92rem;
       color: var(--muted);
+      font-weight: 500;
+      line-height: 1.45;
     }
-    .export-meta-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 16px;
-      font-size: 0.86rem;
+    .export-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
     }
-    .export-meta-table th,
-    .export-meta-table td {
-      border: 1px solid var(--border);
-      padding: 8px 10px;
-      vertical-align: top;
-      text-align: left;
-    }
-    .export-meta-table th {
-      width: 34%;
+    .export-chip {
+      font-size: 0.82rem;
+      padding: 6px 12px;
+      border-radius: 999px;
       background: #f8fafc;
-      font-weight: 600;
+      border: 1px solid var(--border);
       color: var(--tab-active);
+      line-height: 1.3;
     }
+    .export-chip b { font-weight: 600; }
     .export-front-matter {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 12px;
+      border-left: 4px solid #16a34a;
       box-shadow: var(--shadow);
-      padding: 18px 20px;
-      margin-bottom: 16px;
+      padding: 16px 18px;
+      margin-bottom: 14px;
     }
     .export-part-title {
       margin: 0 0 12px;
@@ -479,9 +465,10 @@
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 12px;
+      border-left: 4px solid #94a3b8;
       box-shadow: var(--shadow);
-      padding: 16px 20px 12px;
-      margin-bottom: 16px;
+      padding: 16px 18px 12px;
+      margin-bottom: 14px;
     }
     .export-toc ol { margin: 0; padding-left: 1.2em; }
     .export-toc li { margin-bottom: 6px; font-size: 0.92rem; }
@@ -495,7 +482,8 @@
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 18px 20px;
+      border-left: 4px solid #94a3b8;
+      padding: 16px 18px;
       margin-top: 20px;
       box-shadow: var(--shadow);
     }
@@ -514,6 +502,7 @@
     .export-section--high { border-left-color: #16a34a; }
     .export-section--medium { border-left-color: #f59e0b; }
     .export-section--low { border-left-color: #94a3b8; }
+    .export-section--mandatory { border-left-color: #16a34a; }
     .export-section-head {
       display: flex;
       justify-content: space-between;
@@ -522,18 +511,14 @@
       margin-bottom: 10px;
       flex-wrap: wrap;
     }
-    .export-section-core {
-      min-width: 0;
-    }
-    .export-facts-block {
-      margin-top: 4px;
-    }
-    .export-facts-block .export-subtitle {
+    .export-section > .export-section-body ~ .export-subtitle {
       margin-top: 14px;
     }
-    .export-section-foot {
-      margin-top: 12px;
-      padding-top: 2px;
+    .export-section > ul {
+      margin: 0.5em 0;
+      padding-left: 1.2em;
+      font-size: 0.96rem;
+      line-height: 1.55;
     }
     .export-section-title {
       margin: 0;
@@ -582,10 +567,12 @@
       .export-wrap { padding: 0; max-width: none; }
       .export-guide,
       .print-hint { display: none !important; }
-      .export-hero, .export-section, .export-front-matter, .export-toc, .export-appendix { box-shadow: none; }
+      .export-hero, .export-section, .export-front-matter, .export-toc, .export-appendix, .export-data-sheet { box-shadow: none; }
+      .export-brand-logo,
+      .export-hero-titles,
+      .export-chips,
       .export-hero-top {
-        break-inside: auto;
-        page-break-inside: auto;
+        break-inside: avoid;
       }
       .export-hero,
       .export-front-matter,
@@ -617,17 +604,14 @@
       }
       .export-section-body p,
       .export-section-body li,
+      .export-section > ul li,
       .export-narrative,
       .export-appendix-note,
       .export-warn {
         orphans: 3;
         widows: 3;
       }
-      .export-facts-block {
-        break-inside: avoid;
-        page-break-inside: avoid;
-      }
-      .export-section-foot {
+      .export-section > .export-subtitle + ul {
         break-inside: avoid;
         page-break-inside: avoid;
       }
@@ -646,11 +630,10 @@
         ${logoHtml}
         <div class="export-hero-titles">
           <h1>${escapeHtml(L.title)}</h1>
-          <p class="export-doc-kind">${escapeHtml(L.documentKind)}</p>
-          <p class="export-audience">${escapeHtml(L.audienceNote)}</p>
+          <p class="export-sub">Стратегический дашборд ТОиР · экспорт документа</p>
         </div>
       </div>
-      ${metaTableHtml}
+      ${heroChipsHtml}
     </header>
     <section class="export-front-matter">
       <h2 class="export-part-title">Цель и охват анализа</h2>

@@ -2,6 +2,14 @@
 
 const config = require("./config");
 
+function sourceFilesPhrase(sourceName) {
+  const s = String(sourceName || "").trim();
+  if (!s) return "агрегированного источника";
+  const m = s.match(/^(\d+)\s+/);
+  if (m) return `${m[1]} отчётных файлов`;
+  return `источника **${s}**`;
+}
+
 function fmtPct(value) {
   if (!Number.isFinite(Number(value))) return "—";
   return `${(Number(value) * 100).toFixed(1)}%`;
@@ -42,25 +50,24 @@ function findTriggered(diagnosticsSummary, ids) {
 
 function buildPassportSection(factPack) {
   const snap = factPack.snapshot_summary || {};
-  const filtersText =
-    `период: ${snap.period_label || "12 мес."}` +
-    `, класс: ${snap.class_filter && snap.class_filter !== "__all__" ? snap.class_filter : "все классы"}`;
+  const k = factPack.kpis || {};
+  const org = snap.organization || "организации";
+  const periodFull = snap.period_full || snap.period_label || "—";
+  const filesPhrase = sourceFilesPhrase(snap.source_name);
+  const months = snap.months_count != null ? snap.months_count : 12;
   const body =
-    `Отчёт зафиксирован как снимок текущего среза по источнику **${snap.source_name || "—"}**. ` +
-    `Повторное открытие отчёта не пересчитывает данные автоматически.\n\n` +
-    `Период анализа: **${snap.period_full || snap.period_label || "—"}**.\n\n` +
-    `Активные фильтры: ${filtersText}.\n\n` +
-    `Организация: ${snap.organization || "—"}.`;
+    `Отчёт охватывает деятельность по техническому обслуживанию и ремонту в **${org}** ` +
+    `за период **${periodFull}**. Анализ базируется на данных из ${filesPhrase}, ` +
+    `охватывающих **${fmtNum(k.equipment_count)} единиц** оборудования.`;
   return {
     section_id: "passport",
     title: "Паспорт отчёта и контекст среза",
     body_markdown: body,
     fact_bullets: [
-      `Источник: ${snap.source_name || "—"}.`,
-      `Период: ${snap.period_label || "—"} (доля от года ${fmtPct(snap.period_fraction)}).`,
-      `Фильтр по классу: ${
-        snap.class_filter && snap.class_filter !== "__all__" ? snap.class_filter : "все классы"
-      }.`,
+      `Период: ${snap.period_label || "—"} (${months} мес.).`,
+      `Количество оборудования: ${fmtNum(k.equipment_count)} ед.`,
+      `Общие затраты: ${fmtMoney(k.total_cost)} руб.`,
+      `Суммарный простой: ${fmtHours(k.total_downtime_h)} ч.`,
     ],
     evidence_refs: ["snapshot_summary"],
     confidence: "high",
@@ -71,39 +78,73 @@ function buildPassportSection(factPack) {
 
 function buildExecutiveSummarySection(factPack) {
   const k = factPack.kpis || {};
-  const ds = factPack.diagnostics_summary || {};
-  const triggered = (ds.triggered || []).slice();
-  const topCost = safeFirst(factPack.top_cost_objects);
-  const diagSentence = triggered.length
-    ? "Сработали ключевые автодиагностики: " +
-      triggered
-        .slice(0, 2)
-        .map((d) => `**${d.id}** — ${d.summary}`)
-        .join("; ")
-    : "Сильных автодиагностик по текущим порогам не сработало.";
-  const body =
-    `В текущем срезе зафиксировано **${fmtNum(k.total_defects)} отказов** ` +
-    `на **${fmtNum(k.equipment_count)} единиц оборудования** с общим бюджетом ТОиР ` +
-    `**${fmtMoney(k.total_cost)} руб.**. ` +
-    `Лидер по затратам сейчас — **${topCost.name || "н/д"}** (${fmtMoney(topCost.total)} руб.).\n\n` +
-    `${diagSentence}\n\n` +
-    `Средний КТГ по парку — **${k.avg_ktg !== null ? k.avg_ktg + "%" : "н/д"}**, ` +
-    `средний СННО — **${fmtHours(k.avg_mtbf_h)} ч**, ` +
-    `средний СВВ — **${fmtHours(k.avg_mttr_h)} ч**. ` +
-    `Руководителю нужен фокус не только на снижении затрат, но и на повышении надёжности у проблемных объектов.`;
+  const k1 = findTriggered(factPack.diagnostics_summary, ["K1"])[0];
+  const r18 = findTriggered(factPack.diagnostics_summary, ["R18"])[0];
+  const k3 = findTriggered(factPack.diagnostics_summary, ["K3"])[0];
+
+  const ktgLine =
+    k.avg_ktg !== null
+      ? k.avg_ktg < 90
+        ? `Текущее состояние ТОиР характеризуется низкой эффективностью использования оборудования: **средний КТГ по парку ${k.avg_ktg}%** (целевой ориентир — 90%).`
+        : `Средний **КТГ по парку ${k.avg_ktg}%** на уровне или выше типового целевого ориентира (90%), однако отдельные объекты и участки парка могут оставаться в зоне риска.`
+      : "Текущее состояние ТОиР оцените по доступным KPI; данных КТГ в срезе недостаточно.";
+  const topCostNames = new Set((factPack.top_cost_objects || []).slice(0, 5).map((r) => r.name));
+  const byDefects = [...(factPack.top_problem_objects || [])].sort((a, b) => (b.defects || 0) - (a.defects || 0));
+  const topDefectNames = new Set(byDefects.slice(0, 5).map((o) => o.name));
+  let overlap = 0;
+  topCostNames.forEach((n) => {
+    if (topDefectNames.has(n)) overlap += 1;
+  });
+  const mismatchLine =
+    topCostNames.size && topDefectNames.size
+      ? overlap <= 1
+        ? "Затраты и простои распределены неравномерно; **топ-5 объектов по затратам не совпадает с топ-5 по числу отказов**."
+        : `Затраты и простои распределены неравномерно; пересечение топ-5 по затратам и по отказам — **${overlap}** объект(ов).`
+      : "Затраты и простои распределены неравномерно.";
+
+  const corrLine =
+    "При этом **слабая корреляция** между частотой отказов и финансовыми потерями типична для парка с редкими дорогими инцидентами.";
+
+  const r18Line = r18
+    ? `Основные потери генерируются редкими, но дорогостоящими инцидентами (${r18.summary}) — требуется **риск-ориентированный** подход вместо фокуса только на числе ремонтов.`
+    : "Имеет смысл проверить, не концентрируются ли потери в редких дорогостоящих случаях вопреки частоте отказов.";
+
+  const chunks = [ktgLine];
+  if (k1) chunks.push(k1.summary);
+  chunks.push(mismatchLine, corrLine, r18Line);
+  if (k3) chunks.push(k3.summary);
+  const body = chunks.join(" ");
+
+  const factBullets = [`Средний КТГ по парку: ${k.avg_ktg !== null ? k.avg_ktg + "%" : "н/д"}.`];
+  if (topCostNames.size && topDefectNames.size) {
+    factBullets.push(
+      overlap <= 1
+        ? "Топ-5 объектов по затратам не совпадают с топ-5 по количеству отказов."
+        : `Пересечение топ-5 по затратам и по отказам: ${overlap} объект(ов).`
+    );
+  }
+  if (k3) {
+    factBullets.push(`Диагностика K3 (длительные ремонты): ${k3.summary}`);
+  } else {
+    const slow = (factPack.mttr_top || []).filter((r) => (r.mttr_h || 0) > 50).length;
+    if (slow) factBullets.push(`Объектов с СВВ выше 50 ч в топе: ${slow}.`);
+  }
+
+  const evidenceRefs = ["kpis", "top_cost_objects", "top_problem_objects"];
+  if (r18) evidenceRefs.push("diagnostics:R18");
+  if (k1) evidenceRefs.push("diagnostics:K1");
+  if (k3) evidenceRefs.push("diagnostics:K3");
+
   return {
     section_id: "executive_summary",
     title: "Короткий вывод для руководителя",
     body_markdown: body,
-    fact_bullets: [
-      `Затраты ТОиР: ${fmtMoney(k.total_cost)} руб.`,
-      `Отказов: ${fmtNum(k.total_defects)}.`,
-      `Сработавших гипотез: ${triggered.length}.`,
-      `Средний КТГ: ${k.avg_ktg !== null ? k.avg_ktg + "%" : "н/д"}.`,
+    fact_bullets: factBullets,
+    evidence_refs: evidenceRefs,
+    confidence: k.avg_ktg !== null && factBullets.length >= 2 ? "high" : "medium",
+    warnings: [
+      "Отсутствие в источнике полного среза по персоналу и детализированных связей «отказ — простой — ущерб» ограничивает глубину управленческих выводов.",
     ],
-    evidence_refs: ["kpis", "diagnostics_summary", "top_cost_objects"],
-    confidence: baseConfidence(k.equipment_count || 0),
-    warnings: [],
     mandatory: false,
   };
 }
@@ -137,7 +178,7 @@ function buildCostsAndTrendSection(factPack) {
       `Пиковый месяц: ${peak.month || "н/д"} (${fmtMoney(peak.total)} руб., ${fmtPct(peakShare)}).`,
     ],
     evidence_refs: ["kpis", "monthly_trend", "diagnostics:R5"],
-    confidence: baseConfidence(trend.length * 3),
+    confidence: trend.length >= 6 && k.total_cost > 0 ? "high" : baseConfidence(Math.max(1, trend.length) * 3),
     warnings,
     mandatory: false,
   };
@@ -172,7 +213,8 @@ function buildCostHotspotsSection(factPack) {
       `Объектов с положительными затратами: ${(factPack.top_cost_objects || []).length}.`,
     ],
     evidence_refs: ["top_cost_objects", "pareto_cost_objects", "diagnostics:R2", "diagnostics:R3", "diagnostics:R18"],
-    confidence: baseConfidence((factPack.top_cost_objects || []).length * 3),
+    confidence:
+      (factPack.top_cost_objects || []).length >= 5 && pareto.share_80 > 0 ? "high" : baseConfidence((factPack.top_cost_objects || []).length * 3),
     warnings,
     mandatory: false,
   };
@@ -231,7 +273,7 @@ function buildReliabilitySection(factPack) {
       "diagnostics:R12",
       "diagnostics:R13",
     ],
-    confidence: baseConfidence(causes.length + mtbfTop.length + mttrTop.length),
+    confidence: "medium",
     warnings,
     mandatory: false,
   };
@@ -285,55 +327,57 @@ function buildPersonnelSection(factPack) {
 
 function buildDataLimitationsSection(factPack) {
   const q = factPack.quality_summary || {};
-  const ds = factPack.diagnostics_summary || {};
-  const insufficient = ds.insufficient || [];
+  const unsupported = q.diagnostics_unsupported_count != null ? q.diagnostics_unsupported_count : 9;
   const body =
-    `Надёжность выводов в этом отчёте зависит от того, насколько полно заполнены ключевые поля. ` +
-    `Из ${q.objects_total || "—"} объектов в срезе у **${q.objects_no_ktg || 0}** нет данных КТГ, ` +
-    `у **${q.objects_no_costs || 0}** нет затрат, ` +
-    `у **${q.objects_no_defects || 0}** нет отказов.\n\n` +
-    `Также **${q.diagnostics_unsupported_count || 9} автодиагностик** из 18 правил библиотеки expert-main ` +
-    `помечены как «нет данных» — для них нужна event-level история инцидентов с датами, ` +
-    `причинами и привязкой простоя к конкретному отказу. Сейчас в источнике хранятся только агрегаты, ` +
-    `поэтому такие правила (повторные отказы 30–60 дней, сравнение по подразделениям, RCA-зрелость) ` +
-    `не работают и их выводы недоступны.\n\n` +
-    `Сильные управленческие решения лучше принимать там, где сигнал подтверждается одновременно ` +
-    `и KPI, и автодиагностиками, и качественными полями.`;
+    `Анализ ограничен отсутствием детализированной истории инцидентов ` +
+    `(привязка простоев к конкретным отказам, журналы нарядов, стоимость часа простоя). ` +
+    `Это снижает возможности глубокого RCA и точной оценки экономической целесообразности ремонтов.\n\n` +
+    `**${unsupported}** из 18 диагностических правил не применимы на текущем агрегате из‑за нехватки событийных атрибутов в источнике. ` +
+    `В факт-пакете отчёта нет свода по трудозатратам персонала; отсутствует единая **стоимость часа простоя** для расчёта экономического ущерба.`;
   return {
     section_id: "data_limitations",
     title: "Ограничения данных и надёжность выводов",
     body_markdown: body,
     fact_bullets: [
-      `Объектов без КТГ: ${q.objects_no_ktg || 0} из ${q.objects_total || "—"}.`,
-      `Объектов без затрат: ${q.objects_no_costs || 0} из ${q.objects_total || "—"}.`,
-      `Объектов без данных по отказам: ${q.objects_no_defects || 0} из ${q.objects_total || "—"}.`,
-      `Диагностик без данных: ${insufficient.length}.`,
+      `${unsupported} из 18 диагностических правил не применимы из-за отсутствия событийной истории в нужном виде.`,
+      "Нет данных по трудозатратам персонала в факт-пакете.",
+      "Отсутствует стоимость часа простоя для расчёта экономического ущерба.",
     ],
     evidence_refs: ["quality_summary", "diagnostics_summary"],
-    confidence: "high",
-    warnings: [],
+    confidence: "medium",
+    warnings: [
+      "Снижена уверенность в выводах, касающихся эффективности ремонтных бригад и экономической целесообразности восстановления.",
+    ],
     mandatory: true,
   };
 }
 
 function buildPriorityActionsSection(factPack) {
   const triggered = (factPack.diagnostics_summary && factPack.diagnostics_summary.triggered) || [];
-  let actions;
-  if (triggered.length) {
-    actions = triggered.map((d) => `**${d.id}.** ${d.recommendation}`);
-  } else {
-    actions = [
+  const preferredOrder = ["R18", "K1", "K3"];
+  const byId = new Map(triggered.map((d) => [d.id, d]));
+  const actions = [];
+  preferredOrder.forEach((id) => {
+    const d = byId.get(id);
+    if (d) actions.push(`**${d.id}.** ${d.recommendation}`);
+  });
+  triggered.forEach((d) => {
+    if (preferredOrder.indexOf(d.id) === -1) actions.push(`**${d.id}.** ${d.recommendation}`);
+  });
+  let finalActions = actions;
+  if (!finalActions.length) {
+    finalActions = [
       "Сделать точечный разбор верхних объектов по затратам и подтвердить, какие из них реально формируют производственный риск.",
       "Проверить объекты с низким КТГ и оценить, устранены ли коренные причины частых простоев.",
       "Не принимать дорогих решений до улучшения заполненности экономических и причинных полей.",
     ];
   }
-  const numbered = actions.slice(0, 5).map((a, i) => `${i + 1}. ${a}`).join("\n");
+  const numbered = finalActions.slice(0, 5).map((a, i) => `${i + 1}. ${a}`).join("\n");
   return {
     section_id: "priority_actions",
     title: "Приоритетные управленческие действия",
     body_markdown: numbered,
-    fact_bullets: actions.slice(0, 5),
+    fact_bullets: finalActions.slice(0, 5),
     evidence_refs: ["diagnostics_summary", "top_cost_objects", "top_problem_objects"],
     confidence: triggered.length ? "medium" : "low",
     warnings: triggered.length

@@ -220,16 +220,35 @@ async function buildReportDocxBuffer(document_) {
   );
   children.push(
     new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 60 },
-      children: [new TextRun({ text: layout.documentKind, italics: true, size: 24 })],
+      spacing: { after: 100 },
+      children: [
+        new TextRun({
+          text: "Стратегический дашборд ТОиР · экспорт документа",
+          size: 22,
+          color: "64748B",
+        }),
+      ],
     })
   );
   children.push(
     new Paragraph({
       spacing: { after: 200 },
-      alignment: AlignmentType.JUSTIFIED,
-      children: [new TextRun({ text: layout.audienceNote, size: 22, color: "475569" })],
+      children: [
+        new TextRun({ text: `Период: ${layout.snapshot.periodLabel}`, size: 20, color: "0F172A" }),
+        new TextRun({ text: "    ", size: 20, color: "64748B" }),
+        new TextRun({ text: `Класс: ${layout.snapshot.classLabel}`, size: 20, color: "0F172A" }),
+        new TextRun({ text: "    ", size: 20, color: "64748B" }),
+        new TextRun({ text: `Обновлён: ${layout.preparedAtFormatted}`, size: 20, color: "0F172A" }),
+        new TextRun({ text: "    ", size: 20, color: "64748B" }),
+        new TextRun({ text: `Ревизий: ${String(layout.revisionCount)}`, size: 20, color: "0F172A" }),
+      ],
+    })
+  );
+  children.push(
+    new Paragraph({
+      text: "Реквизиты документа",
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 120, after: 120 },
     })
   );
   children.push(buildMetaTable(layout));

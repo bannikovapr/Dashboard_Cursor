@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   const U = window.ToirUtils;
   const Charts = window.ToirCharts;
   const runtimeLlm = {
@@ -820,6 +820,8 @@
       if (!activePanel) return null;
       const panelKind = activePanel.getAttribute("data-panel");
       if (panelKind === "reports") {
+        const docHead = activePanel.querySelector("#reportView .report-doc-head");
+        if (docHead) return docHead;
         const firstSection = activePanel.querySelector("#reportView .report-section");
         if (firstSection) return firstSection;
         const reportView = activePanel.querySelector("#reportView");

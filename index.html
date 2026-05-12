@@ -59,8 +59,8 @@
               <button type="button" class="tab" data-tab="costs">Затраты</button>
               <button type="button" class="tab" data-tab="reliability">Надёжность</button>
               <button type="button" class="tab" data-tab="equipment">Оборудование</button>
-              <button type="button" class="tab" data-tab="diagnostics">Диагностики</button>
-              <button type="button" class="tab" data-tab="reports">Отчёт ТОиР</button>
+              <button type="button" class="tab tab--pill-outline" data-tab="diagnostics">Диагностики</button>
+              <button type="button" class="tab tab--pill-cta" data-tab="reports">Отчёт ТОиР</button>
             </div>
           </div>
         </header>
@@ -253,18 +253,21 @@
 
           <div id="panel-charts-reports" class="panel-charts" data-panel="reports" hidden>
             <div class="report-layout">
-              <aside class="report-sidebar card">
+              <div class="report-sidebar-top card">
                 <div class="report-sidebar-head">
                   <h3>Отчёты</h3>
                   <button type="button" id="reportsRefreshBtn" class="report-sidebar-icon" title="Обновить список">↻</button>
                 </div>
-                <button type="button" id="reportsCreateBtn" class="btn-primary report-sidebar-cta">
+                <div id="reportsStatus" class="report-status"></div>
+                <button type="button" id="reportsCreateBtn" class="report-sidebar-cta">
                   + Создать отчёт по текущему срезу
                 </button>
-                <div id="reportsStatus" class="report-status"></div>
+              </div>
+              <div id="reportHeadCell" class="report-head-cell card" aria-live="polite"></div>
+              <div class="report-sidebar-list card">
                 <div id="reportsList" class="reports-list"></div>
-              </aside>
-              <section class="report-main card" id="reportView"></section>
+              </div>
+              <section class="report-main card report-main--body" id="reportView"></section>
             </div>
           </div>
         </div>

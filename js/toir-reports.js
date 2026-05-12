@@ -169,6 +169,11 @@
     el.dataset.kind = kind || "";
   }
 
+  function setReportLayoutDocMode(hasDoc) {
+    const layout = document.querySelector("#panel-charts-reports .report-layout");
+    if (layout) layout.classList.toggle("report-layout--has-doc", !!hasDoc);
+  }
+
   function periodLabelRu(period) {
     if (period === "h1") return "1-е полугодие 2025";
     if (period === "h2") return "2-е полугодие 2025";
@@ -211,52 +216,112 @@
     updateWelcomeSlice();
   }
 
+  function updateWelcomeExportState() {
+    const has = (STATE.reports || []).length > 0;
+    const dd = document.getElementById("reportWelcomeExportDropdown");
+    if (dd) {
+      dd.classList.toggle("report-export-dropdown--disabled", !has);
+      dd.querySelectorAll(".report-export-menu-item").forEach((btn) => {
+        btn.disabled = !has;
+      });
+    }
+    ["reportWelcomeExportHtml", "reportWelcomeExportDocx", "reportWelcomeExportPdf", "reportWelcomePrint"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.disabled = !has;
+      el.title = has ? "Выгрузить последний сохранённый отчёт" : "Сначала создайте отчёт";
+    });
+  }
+
   function renderEmpty(panel) {
     if (!panel) return;
+    const headCell = document.getElementById("reportHeadCell");
+    if (headCell) headCell.innerHTML = "";
+    setReportLayoutDocMode(false);
     panel.classList.add("report-main--empty");
     panel.innerHTML = `
       <div class="report-welcome">
-        <h3 class="report-welcome-title">Отчёт ТОиР</h3>
-        <p class="report-welcome-lead">
-          Создайте новый отчёт по текущему срезу дашборда (период и класс — как в шапке) или откройте сохранённый слева.
-          В снимок входят показатели, автодиагностики <strong>R/K</strong> и текст секций; выгрузка в <strong>HTML</strong>, <strong>DOCX</strong> и <strong>PDF</strong> с оформлением как в редакторе.
-          Хранение локально: <code>.reports/</code>.
-        </p>
-        <div class="report-welcome-grid">
-          <div class="report-welcome-actions">
-            <div class="report-welcome-buttons">
-              <button type="button" id="reportWelcomeCreate" class="btn-primary report-welcome-create">+ Создать отчёт</button>
-              <button type="button" id="reportWelcomeRefresh" class="report-welcome-refresh">Обновить список</button>
-            </div>
-            <ol class="report-welcome-steps">
-              <li>Проверьте в шапке дашборда период и класс — отчёт создаётся для этого среза и дальнейших выгрузок.</li>
-              <li>Нажмите «Создать» здесь или в боковой панели — при необходимости отредактируйте заголовок.</li>
-              <li>Откройте отчёт из списка: правьте секции и уверенность, при необходимости обновите снимок или откатите ревизию; выгрузите документ.</li>
-            </ol>
-          </div>
-          <div class="report-welcome-status">
-            <div class="report-slice-cards">
-              <div class="report-slice-card">
-                <div class="report-slice-label">Текущий период</div>
-                <div class="report-slice-value" id="reportSlicePeriod">—</div>
-              </div>
-              <div class="report-slice-card">
-                <div class="report-slice-label">Класс оборудования</div>
-                <div class="report-slice-value" id="reportSliceClass">—</div>
-              </div>
-              <div class="report-slice-card">
-                <div class="report-slice-label">Сохранённых отчётов</div>
-                <div class="report-slice-value" id="reportSliceCount">0</div>
+        <div class="report-welcome-shell card">
+          <div class="report-welcome-brand">
+            <div class="top-header">
+              <div class="brand-band">
+                <img
+                  class="brand-logo-img"
+                  src="assets/desnol-userpic.png"
+                  width="90"
+                  height="90"
+                  alt="Desnol"
+                  decoding="async"
+                />
+                <div class="brand-lockup">
+                  <div class="titles">
+                    <h1>Отчёт ТОиР</h1>
+                  </div>
+                </div>
               </div>
             </div>
-            <p class="report-welcome-foot" id="reportLastHint">
-              Последний отчёт: <span id="reportLastLine">—</span>
+            <p class="report-welcome-lead">
+              Создайте отчёт по текущему срезу дашборда (период и класс задаются в шапке страницы) или откройте сохранённый в списке слева.
+              Снимок фиксирует KPI, автодиагностики <strong>R/K</strong> и секции; выгрузка в <strong>HTML</strong>, <strong>DOCX</strong> и <strong>PDF</strong> в стиле дашборда.
+              Файлы отчётов хранятся локально в <code>.reports/</code>.
             </p>
+          </div>
+          <div class="report-welcome-workzone" aria-label="Действия и срез">
+            <div class="report-welcome-grid-inner">
+              <div class="report-welcome-main-col">
+                <div class="report-welcome-toolbar-row report-welcome-toolbar-row--top" role="toolbar" aria-label="Действия">
+                  <button type="button" id="reportWelcomeCreate" class="btn-report-toolbar btn-report-toolbar--pill">
+                    + Создать отчёт
+                  </button>
+                  <button type="button" id="reportWelcomeRefresh" class="btn-report-secondary-welcome">Обновить список</button>
+                </div>
+                <ol class="report-welcome-steps">
+                  <li>Проверьте в шапке период и класс оборудования — новый отчёт строится для этого среза.</li>
+                  <li>Нажмите «Создать отчёт» и при необходимости отредактируйте заголовок.</li>
+                  <li>Откройте отчёт в списке слева: правьте секции, при необходимости обновите снимок или откатите ревизию.</li>
+                  <li>Выгрузку можно сделать из открытого отчёта или в блоке справа — будет использован <strong>последний сохранённый</strong> отчёт, если ни один не открыт.</li>
+                </ol>
+              </div>
+              <div class="report-welcome-aside">
+                <div class="report-welcome-compact-panel">
+                  <div class="report-welcome-toolbar-row" role="toolbar" aria-label="Обновление и выгрузка">
+                    <button type="button" id="reportWelcomeRefreshIcon" class="btn-report-toolbar btn-report-toolbar--icon" title="Обновить список" aria-label="Обновить список">↻</button>
+                    <details class="report-export-dropdown" id="reportWelcomeExportDropdown">
+                      <summary class="report-export-summary">Выгрузить отчёт <span class="report-export-caret" aria-hidden="true">▼</span></summary>
+                      <div class="report-export-menu" id="reportWelcomeExportMenu" role="menu">
+                        <button type="button" class="report-export-menu-item" data-export="html" id="reportWelcomeExportHtml">HTML</button>
+                        <button type="button" class="report-export-menu-item" data-export="docx" id="reportWelcomeExportDocx">DOCX</button>
+                        <button type="button" class="report-export-menu-item" data-export="pdf" id="reportWelcomeExportPdf">PDF</button>
+                        <button type="button" class="report-export-menu-item" data-export="print" id="reportWelcomePrint">Печать…</button>
+                      </div>
+                    </details>
+                  </div>
+                  <div class="report-slice-cards report-slice-cards--compact">
+                    <div class="report-slice-card">
+                      <div class="report-slice-label">Текущий период</div>
+                      <div class="report-slice-value" id="reportSlicePeriod">—</div>
+                    </div>
+                    <div class="report-slice-card">
+                      <div class="report-slice-label">Класс оборудования</div>
+                      <div class="report-slice-value" id="reportSliceClass">—</div>
+                    </div>
+                    <div class="report-slice-card">
+                      <div class="report-slice-label">Сохранённых отчётов</div>
+                      <div class="report-slice-value" id="reportSliceCount">0</div>
+                    </div>
+                  </div>
+                  <p class="report-welcome-foot" id="reportLastHint">
+                    Последний отчёт: <span id="reportLastLine">—</span>
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     `;
     updateWelcomeSlice();
+    updateWelcomeExportState();
   }
 
   async function loadList() {
@@ -267,6 +332,7 @@
       STATE.mandatory = data.mandatory || [];
       renderList();
       updateWelcomeSlice();
+      updateWelcomeExportState();
     } catch (e) {
       setStatus(`Ошибка загрузки списка отчётов: ${e.message}`, "error");
     }
@@ -413,41 +479,58 @@
     }
     STATE.activeDocument = document_;
     view.classList.remove("report-main--empty");
+    const headCell = document.getElementById("reportHeadCell");
+    if (headCell) headCell.innerHTML = "";
     view.innerHTML = "";
 
     const head = document.createElement("header");
     head.className = "report-doc-head";
     const snap = document_.snapshot || {};
     const cls = snap.class_filter && snap.class_filter !== "__all__" ? snap.class_filter : "все классы";
+    const undoDisabled = (document_.revisions || []).length < 2;
     head.innerHTML = `
-      <div class="report-doc-titles">
-        <h2 id="reportDocTitle">${escapeHtml(document_.title || "")}</h2>
-        <div class="report-doc-meta">
-          <span>${escapeHtml(snap.period_label || "—")}</span>
-          <span>·</span>
-          <span>${escapeHtml(cls)}</span>
-          <span>·</span>
-          <span>обновлён ${fmtDate(document_.updated_at)}</span>
-          <span>·</span>
-          <span>ревизий: ${(document_.revisions || []).length}</span>
+      <div class="report-doc-toolbar">
+        <div class="report-doc-toolbar-row">
+          <div class="report-doc-actions" role="toolbar" aria-label="Действия с документом">
+            <button type="button" id="reportEditTitle" class="btn-report-toolbar btn-report-toolbar--pill" title="Изменить заголовок">Заголовок</button>
+            <button type="button" id="reportRefresh" class="btn-report-toolbar btn-report-toolbar--icon" title="Обновить снимок по новым данным" aria-label="Обновить снимок по новым данным">↻</button>
+            <button type="button" id="reportUndo" class="btn-report-toolbar btn-report-toolbar--pill" ${undoDisabled ? "disabled" : ""}>↶ Откатить</button>
+          </div>
+          <details class="report-export-dropdown" id="reportExportDropdown">
+            <summary class="report-export-summary" aria-label="Выгрузить отчёт">Выгрузить отчёт <span class="report-export-caret" aria-hidden="true">▼</span></summary>
+            <div class="report-export-menu" id="reportExportMenu" role="menu">
+              <button type="button" role="menuitem" id="reportExportHtml" class="report-export-menu-item" data-export="html">HTML</button>
+              <button type="button" role="menuitem" id="reportExportDocx" class="report-export-menu-item" data-export="docx">DOCX</button>
+              <button type="button" role="menuitem" id="reportExportPdf" class="report-export-menu-item" data-export="pdf">PDF</button>
+              <button type="button" role="menuitem" id="reportPrint" class="report-export-menu-item" data-export="print">Печать…</button>
+            </div>
+          </details>
         </div>
       </div>
-      <div class="report-doc-head-right">
-        <div class="report-doc-actions">
-          <button type="button" id="reportEditTitle" title="Изменить заголовок">Заголовок</button>
-          <button type="button" id="reportRefresh" title="Обновить снимок по новым данным">Обновить снимок</button>
-          <button type="button" id="reportUndo" ${(document_.revisions || []).length < 2 ? "disabled" : ""}>↶ Откатить</button>
+      <div class="report-doc-hero">
+        <div class="report-doc-hero-brand">
+          <img
+            class="report-doc-hero-mark"
+            src="assets/desnol-mark.svg"
+            alt=""
+            width="40"
+            height="40"
+            decoding="async"
+          />
+          <span class="report-doc-hero-wordmark" aria-label="Деснол">Деснол</span>
         </div>
-        <div class="report-export-toolbar" role="group" aria-label="Выгрузка отчёта">
-          <span class="report-export-title">Выгрузка</span>
-          <button type="button" id="reportExportHtml" class="btn-export">HTML</button>
-          <button type="button" id="reportExportDocx" class="btn-export btn-export--primary">DOCX</button>
-          <button type="button" id="reportExportPdf" class="btn-export btn-export--primary">PDF</button>
-          <button type="button" id="reportPrint" class="btn-export">Печать…</button>
+        <h2 class="report-doc-hero-title" id="reportDocTitle">${escapeHtml(document_.title || "")}</h2>
+        <p class="report-doc-hero-tagline">Стратегический дашборд ТОиР · экспорт документа</p>
+        <div class="report-doc-hero-chips" aria-label="Параметры отчёта">
+          <span class="report-doc-chip">Период: ${escapeHtml(snap.period_label || "—")}</span>
+          <span class="report-doc-chip">Класс: ${escapeHtml(cls)}</span>
+          <span class="report-doc-chip">Обновлён: ${escapeHtml(fmtDate(document_.updated_at))}</span>
+          <span class="report-doc-chip">Ревизий: ${(document_.revisions || []).length}</span>
         </div>
       </div>
     `;
-    view.appendChild(head);
+
+    setReportLayoutDocMode(true);
 
     const sectionsWrap = document.createElement("section");
     sectionsWrap.className = "report-doc-sections";
@@ -456,6 +539,7 @@
       const card = renderSectionCard(s, { idx, isLast: idx === sections.length - 1, controls: true });
       sectionsWrap.appendChild(card);
     });
+    view.appendChild(head);
     view.appendChild(sectionsWrap);
 
     const aiPanel = document.createElement("section");
@@ -501,6 +585,15 @@
 
   async function loadLogoDataUrl() {
     try {
+      const resSvg = await fetch("assets/desnol-logo.svg", { cache: "force-cache" });
+      if (resSvg.ok) {
+        const svg = await resSvg.text();
+        return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      }
+    } catch (e) {
+      /* fallthrough */
+    }
+    try {
       const res = await fetch("assets/report-brand-logo.png", { cache: "force-cache" });
       if (!res.ok) return null;
       const blob = await res.blob();
@@ -515,107 +608,142 @@
     }
   }
 
-  function bindExportControls(doc_) {
+  async function downloadFromApi(url, filename) {
+    const response = await fetch(url, { credentials: "same-origin" });
+    if (!response.ok) {
+      let msg = `HTTP ${response.status}`;
+      try {
+        const j = await response.json();
+        if (j && j.message) msg = j.message;
+      } catch (e) {
+        /* ignore */
+      }
+      throw new Error(msg);
+    }
+    const blob = await response.blob();
+    triggerDownload(blob, filename);
+  }
+
+  async function resolveDocForExport() {
+    if (STATE.activeDocument && STATE.activeDocument.report_id) {
+      return STATE.activeDocument;
+    }
+    const arr = (STATE.reports || []).slice().sort(
+      (a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime()
+    );
+    if (!arr.length) return null;
+    const res = await api(`/${encodeURIComponent(arr[0].report_id)}`);
+    return res.report || null;
+  }
+
+  async function exportDocumentHtmlToFile(doc_) {
     const HtmlNs = globalThis.__ReportExportHtml;
-    const base = getApiBase().replace(/\/?$/, "");
-    const rid = encodeURIComponent(doc_.report_id);
-
-    const htmlBtn = document.getElementById("reportExportHtml");
-    if (htmlBtn) {
-      htmlBtn.addEventListener("click", async () => {
-        if (!HtmlNs || typeof HtmlNs.buildReportHtmlDocument !== "function") {
-          setStatus("Подключите js/report-export-layout.js и js/report-export-html.js.", "error");
-          return;
-        }
-        setStatus("Сборка HTML…", "info");
-        try {
-          const logo = await loadLogoDataUrl();
-          const html = HtmlNs.buildReportHtmlDocument(doc_, logo, { forPrint: false });
-          triggerDownload(new Blob([html], { type: "text/html;charset=utf-8" }), `${(doc_.title || "toir-report").replace(/[<>:"/\\|?*]+/g, "").slice(0, 72) || "toir-report"}.html`);
-          setStatus("HTML сохранён.", "info");
-        } catch (e) {
-          setStatus(`Не удалось собрать HTML: ${e.message}`, "error");
-        }
-      });
+    if (!HtmlNs || typeof HtmlNs.buildReportHtmlDocument !== "function") {
+      setStatus("Подключите js/report-export-layout.js и js/report-export-html.js.", "error");
+      return;
     }
-
-    const printBtn = document.getElementById("reportPrint");
-    if (printBtn) {
-      printBtn.addEventListener("click", async () => {
-        if (!HtmlNs || typeof HtmlNs.buildReportHtmlDocument !== "function") {
-          setStatus("Подключите js/report-export-layout.js и js/report-export-html.js.", "error");
-          return;
-        }
-        try {
-          const logo = await loadLogoDataUrl();
-          const html = HtmlNs.buildReportHtmlDocument(doc_, logo, { forPrint: true });
-          const w = window.open("", "_blank", "noopener,noreferrer");
-          if (!w) {
-            setStatus("Браузер заблокировал окно печати.", "warn");
-            return;
-          }
-          w.document.open();
-          w.document.write(html);
-          w.document.close();
-          w.focus();
-          setTimeout(() => {
-            try {
-              w.print();
-            } catch (e2) {
-              /* ignore */
-            }
-          }, 400);
-        } catch (e) {
-          setStatus(`Печать: ${e.message}`, "error");
-        }
-      });
+    setStatus("Сборка HTML…", "info");
+    try {
+      const logo = await loadLogoDataUrl();
+      const html = HtmlNs.buildReportHtmlDocument(doc_, logo, { forPrint: false });
+      triggerDownload(new Blob([html], { type: "text/html;charset=utf-8" }), `${(doc_.title || "toir-report").replace(/[<>:"/\\|?*]+/g, "").slice(0, 72) || "toir-report"}.html`);
+      setStatus("HTML сохранён.", "info");
+    } catch (e) {
+      setStatus(`Не удалось собрать HTML: ${e.message}`, "error");
     }
+  }
 
-    async function downloadFromApi(url, filename) {
-      const response = await fetch(url, { credentials: "same-origin" });
-      if (!response.ok) {
-        let msg = `HTTP ${response.status}`;
+  async function exportDocumentPrint(doc_) {
+    const HtmlNs = globalThis.__ReportExportHtml;
+    if (!HtmlNs || typeof HtmlNs.buildReportHtmlDocument !== "function") {
+      setStatus("Подключите js/report-export-layout.js и js/report-export-html.js.", "error");
+      return;
+    }
+    try {
+      const logo = await loadLogoDataUrl();
+      const html = HtmlNs.buildReportHtmlDocument(doc_, logo, { forPrint: true });
+      const w = window.open("", "_blank", "noopener,noreferrer");
+      if (!w) {
+        setStatus("Браузер заблокировал окно печати.", "warn");
+        return;
+      }
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      w.focus();
+      setTimeout(() => {
         try {
-          const j = await response.json();
-          if (j && j.message) msg = j.message;
-        } catch (e) {
+          w.print();
+        } catch (e2) {
           /* ignore */
         }
-        throw new Error(msg);
-      }
-      const blob = await response.blob();
-      triggerDownload(blob, filename);
+      }, 400);
+    } catch (e) {
+      setStatus(`Печать: ${e.message}`, "error");
     }
+  }
 
-    const docxBtn = document.getElementById("reportExportDocx");
-    if (docxBtn) {
-      docxBtn.addEventListener("click", async () => {
-        setStatus("Загрузка DOCX…", "info");
-        try {
-          const stamp = new Date().toISOString().slice(0, 10);
-          const safe = String(doc_.title || "toir-report").replace(/[<>:"/\\|?*]+/g, "").replace(/\s+/g, "-").slice(0, 72) || "toir-report";
-          await downloadFromApi(`${base}/${rid}/export/docx`, `${safe}-${stamp}.docx`);
-          setStatus("DOCX сохранён.", "info");
-        } catch (e) {
-          setStatus(`DOCX: ${e.message}`, "error");
-        }
-      });
+  async function exportDocumentDocx(doc_) {
+    const base = getApiBase().replace(/\/?$/, "");
+    const rid = encodeURIComponent(doc_.report_id);
+    setStatus("Загрузка DOCX…", "info");
+    try {
+      const stamp = new Date().toISOString().slice(0, 10);
+      const safe = String(doc_.title || "toir-report").replace(/[<>:"/\\|?*]+/g, "").replace(/\s+/g, "-").slice(0, 72) || "toir-report";
+      await downloadFromApi(`${base}/${rid}/export/docx`, `${safe}-${stamp}.docx`);
+      setStatus("DOCX сохранён.", "info");
+    } catch (e) {
+      setStatus(`DOCX: ${e.message}`, "error");
     }
+  }
 
-    const pdfBtn = document.getElementById("reportExportPdf");
-    if (pdfBtn) {
-      pdfBtn.addEventListener("click", async () => {
-        setStatus("Загрузка PDF…", "info");
-        try {
-          const stamp = new Date().toISOString().slice(0, 10);
-          const safe = String(doc_.title || "toir-report").replace(/[<>:"/\\|?*]+/g, "").replace(/\s+/g, "-").slice(0, 72) || "toir-report";
-          await downloadFromApi(`${base}/${rid}/export/pdf`, `${safe}-${stamp}.pdf`);
-          setStatus("PDF сохранён.", "info");
-        } catch (e) {
-          setStatus(`PDF: ${e.message}`, "error");
-        }
-      });
+  async function exportDocumentPdf(doc_) {
+    const base = getApiBase().replace(/\/?$/, "");
+    const rid = encodeURIComponent(doc_.report_id);
+    setStatus("Загрузка PDF…", "info");
+    try {
+      const stamp = new Date().toISOString().slice(0, 10);
+      const safe = String(doc_.title || "toir-report").replace(/[<>:"/\\|?*]+/g, "").replace(/\s+/g, "-").slice(0, 72) || "toir-report";
+      await downloadFromApi(`${base}/${rid}/export/pdf`, `${safe}-${stamp}.pdf`);
+      setStatus("PDF сохранён.", "info");
+    } catch (e) {
+      setStatus(`PDF: ${e.message}`, "error");
     }
+  }
+
+  function bindExportControls(doc_) {
+    const menu = document.getElementById("reportExportMenu");
+    const details = document.getElementById("reportExportDropdown");
+    if (!menu || !details) return;
+
+    menu.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-export]");
+      if (!btn || !menu.contains(btn)) return;
+      ev.preventDefault();
+      const kind = btn.getAttribute("data-export") || "";
+
+      const run = async () => {
+        switch (kind) {
+          case "html":
+            await exportDocumentHtmlToFile(doc_);
+            break;
+          case "docx":
+            await exportDocumentDocx(doc_);
+            break;
+          case "pdf":
+            await exportDocumentPdf(doc_);
+            break;
+          case "print":
+            await exportDocumentPrint(doc_);
+            break;
+          default:
+            break;
+        }
+      };
+
+      details.open = false;
+      run().catch((e) => setStatus(String((e && e.message) || e), "error"));
+    });
   }
 
   function bindDocControls(doc_) {
@@ -969,6 +1097,43 @@
       if (ev.target.closest("#reportWelcomeRefresh")) {
         ev.preventDefault();
         loadList();
+        return;
+      }
+      if (ev.target.closest("#reportWelcomeRefreshIcon")) {
+        ev.preventDefault();
+        loadList();
+        return;
+      }
+      const runExport = async (fn) => {
+        try {
+          const doc_ = await resolveDocForExport();
+          if (!doc_) {
+            setStatus("Нет отчёта для выгрузки — сначала создайте отчёт.", "warn");
+            return;
+          }
+          await fn(doc_);
+        } catch (e) {
+          setStatus(String(e.message || e), "error");
+        }
+      };
+      const exportBtn = ev.target.closest("#reportWelcomeExportMenu button[data-export]");
+      if (exportBtn) {
+        ev.preventDefault();
+        const kind = exportBtn.getAttribute("data-export");
+        const dd = document.getElementById("reportWelcomeExportDropdown");
+        const map = {
+          html: exportDocumentHtmlToFile,
+          docx: exportDocumentDocx,
+          pdf: exportDocumentPdf,
+          print: exportDocumentPrint,
+        };
+        const fn = map[kind];
+        if (fn) {
+          runExport(fn).then(() => {
+            if (dd) dd.open = false;
+          });
+        }
+        return;
       }
     });
   }
