@@ -779,7 +779,8 @@
     renderDiagnostics(lastDiagState.data, lastDiagState.period, lastDiagState.class);
   }
 
-  const TABS_WITHOUT_GLOBAL_TABLES = new Set(["diagnostics", "reports"]);
+  /* Таблицы под графиками скрываем только на диагностике (длинная страница). «Отчёт ТОиР»: таблицы в потоке под отчётом — после фикса [hidden]+layout они не перекрывают контент. */
+  const TABS_WITHOUT_GLOBAL_TABLES = new Set(["diagnostics"]);
   const TABS_WITHOUT_KPI_BLOCK = new Set(["reports"]);
 
   function applyTab(name) {
@@ -803,10 +804,6 @@
     const periodSel = document.getElementById("panelPeriod");
     const classSel = document.getElementById("panelClass");
     let resizeTimer = null;
-    let sidebarSyncRaf = null;
-    let layoutObserver = null;
-    const DESKTOP_AI_PANEL_MIN_HEIGHT = 560;
-    const DESKTOP_AI_PANEL_FALLBACK_HEIGHT = 620;
 
     function resetAiSidebarSizing(sidebar) {
       if (!sidebar) return;
@@ -815,98 +812,16 @@
       sidebar.style.maxHeight = "";
     }
 
-    function getActivePanelAnchor() {
-      const activePanel = document.querySelector(".panel-charts:not([hidden])");
-      if (!activePanel) return null;
-      const panelKind = activePanel.getAttribute("data-panel");
-      if (panelKind === "reports") {
-        const docHead = activePanel.querySelector("#reportView .report-doc-head");
-        if (docHead) return docHead;
-        const firstSection = activePanel.querySelector("#reportView .report-section");
-        if (firstSection) return firstSection;
-        const reportView = activePanel.querySelector("#reportView");
-        if (reportView) return reportView;
-        return activePanel;
-      }
-      if (panelKind === "diagnostics") {
-        return activePanel;
-      }
-      const hero = activePanel.querySelector(".chart-card.chart-hero");
-      if (hero) return hero;
-      return (
-        activePanel.querySelector(".charts-grid .chart-card") ||
-        activePanel.querySelector(".charts-grid--sub .chart-card") ||
-        activePanel.querySelector(".charts-grid--3 .chart-card") ||
-        activePanel.querySelector(".chart-card")
-      );
-    }
-
-    function getActivePanelName() {
-      const activePanel = document.querySelector(".panel-charts:not([hidden])");
-      return activePanel?.getAttribute("data-panel") || null;
-    }
-
-    function syncAiSidebarToCostsChart() {
-      const sidebar = document.querySelector(".layout-sidebar");
-      if (!sidebar) return;
-
-      const wide = window.matchMedia && window.matchMedia("(min-width: 992px)").matches;
-      if (!wide) {
-        resetAiSidebarSizing(sidebar);
-        return;
-      }
-
-      const layout = document.querySelector(".layout");
-      const anchor = getActivePanelAnchor();
-      const activePanelName = getActivePanelName();
-      if (activePanelName === "diagnostics") {
-        sidebar.style.alignSelf = "start";
-        sidebar.style.height = `${DESKTOP_AI_PANEL_FALLBACK_HEIGHT}px`;
-        sidebar.style.maxHeight = "none";
-        return;
-      }
-      if (!layout || !anchor) {
-        sidebar.style.alignSelf = "start";
-        sidebar.style.height = `${DESKTOP_AI_PANEL_FALLBACK_HEIGHT}px`;
-        sidebar.style.maxHeight = "none";
-        return;
-      }
-
-      const layoutRect = layout.getBoundingClientRect();
-      const anchorRect = anchor.getBoundingClientRect();
-      const sidebarRect = sidebar.getBoundingClientRect();
-      if (!Number.isFinite(anchorRect.bottom) || !Number.isFinite(sidebarRect.top)) {
-        sidebar.style.alignSelf = "start";
-        sidebar.style.height = `${DESKTOP_AI_PANEL_FALLBACK_HEIGHT}px`;
-        sidebar.style.maxHeight = "none";
-        return;
-      }
-
-      const desiredBottom = anchorRect.bottom - layoutRect.top;
-      const top = sidebarRect.top - layoutRect.top;
-      let height = Math.round(desiredBottom - top);
-      if (!Number.isFinite(height)) height = DESKTOP_AI_PANEL_FALLBACK_HEIGHT;
-      const minHeight = activePanelName === "reports" ? 320 : DESKTOP_AI_PANEL_MIN_HEIGHT;
-      height = Math.max(minHeight, height);
-
-      sidebar.style.alignSelf = "start";
-      sidebar.style.height = `${height}px`;
-      sidebar.style.maxHeight = "none";
-    }
-
-    function scheduleSyncAiSidebar() {
-      if (sidebarSyncRaf) cancelAnimationFrame(sidebarSyncRaf);
-      sidebarSyncRaf = requestAnimationFrame(() => {
-        sidebarSyncRaf = null;
-        syncAiSidebarToCostsChart();
-      });
+    /* Высота AI-панели задаётся в CSS (--ai-sidebar-height), без привязки к графикам/вкладкам. */
+    function clearLegacyAiSidebarInlineStyles() {
+      resetAiSidebarSizing(document.querySelector(".layout-sidebar"));
     }
 
     document.querySelectorAll(".tab").forEach((btn) => {
       btn.addEventListener("click", () => {
         applyTab(btn.dataset.tab);
         Charts.resizeAll();
-        scheduleSyncAiSidebar();
+        clearLegacyAiSidebarInlineStyles();
         if (btn.dataset.tab === "reports" && window.ToirReports && typeof window.ToirReports.onTabActivated === "function") {
           window.ToirReports.onTabActivated();
         }
@@ -917,7 +832,7 @@
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
         Charts.resizeAll();
-        scheduleSyncAiSidebar();
+        clearLegacyAiSidebarInlineStyles();
         reflowDiagnosticsIfNeeded();
       }, 120);
     });
@@ -1105,9 +1020,8 @@
 
       setTimeout(() => {
         Charts.resizeAll();
-        scheduleSyncAiSidebar();
+        clearLegacyAiSidebarInlineStyles();
       }, 120);
-      setTimeout(scheduleSyncAiSidebar, 260);
 
       if (window.ToirReports && typeof window.ToirReports.syncSliceFromDashboard === "function") {
         window.ToirReports.syncSliceFromDashboard();
@@ -1136,15 +1050,7 @@
       });
     }
 
-    const layoutEl = document.querySelector(".layout");
-    const mainEl = document.querySelector(".layout-main");
-    if (layoutEl && typeof ResizeObserver !== "undefined") {
-      layoutObserver = new ResizeObserver(() => scheduleSyncAiSidebar());
-      layoutObserver.observe(layoutEl);
-      if (mainEl) layoutObserver.observe(mainEl);
-    }
-
-    scheduleSyncAiSidebar();
+    clearLegacyAiSidebarInlineStyles();
   }
 
   function detectIntentFromQuestion(question) {

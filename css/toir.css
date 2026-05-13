@@ -443,6 +443,12 @@ body {
   margin-top: 0;
 }
 
+/* Перебивает display: grid у .tables-grid — иначе [hidden] не скрывает блок (UA display:none проигрывает по каскаду). */
+#tablesRow[hidden],
+.tables-grid[hidden] {
+  display: none !important;
+}
+
 .tables-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1426,29 +1432,34 @@ tbody tr:hover {
 /* ── Отчёт ТОиР ─────────────────────────────────── */
 
 .report-layout {
-  display: flex;
-  flex-direction: row;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
   gap: var(--dash-card-gap);
+  align-items: stretch;
+  justify-items: stretch;
+  /* Одна неявная строка auto: высота ряда = максимум из двух колонок; обе тянутся по высоте */
   min-height: var(--report-layout-min-height);
 }
 
 .report-sidebar {
-  flex: 0 1 300px;
-  min-width: 280px;
-  max-width: 320px;
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
   padding: 16px 18px 20px;
   display: flex;
   flex-direction: column;
   gap: var(--dash-card-gap);
-  min-height: 0;
   box-sizing: border-box;
+  min-height: 0;
+  height: 100%;
 }
 
 .report-main-stack {
-  flex: 1 1 0;
+  grid-column: 2;
+  grid-row: 1;
   min-width: 0;
   min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   gap: var(--dash-card-gap);
@@ -1492,21 +1503,36 @@ tbody tr:hover {
   min-height: var(--report-layout-min-height);
 }
 
+/* Документ открыт: цепочка height:100% + flex:1 1 0 у #reportView оставляла ряд сетки у min-height (~552px),
+   контент обрезался; даём колонкам и телу отчёта высоту по содержимому (ряд сетки растёт). */
+.report-layout.report-layout--has-doc .report-sidebar,
+.report-layout.report-layout--has-doc .report-main-stack {
+  height: auto;
+  min-height: var(--report-layout-min-height);
+}
+
+.report-layout.report-layout--has-doc .report-main--body {
+  flex: 0 1 auto;
+  min-height: auto;
+}
+
 @media (max-width: 1099px) {
   .report-layout {
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
   }
 
   .report-sidebar {
-    flex: 0 0 auto;
+    grid-column: 1;
+    grid-row: 1;
     max-width: none;
     width: 100%;
-    min-width: 0;
   }
 
   .report-main-stack {
-    flex: 1 1 auto;
+    grid-column: 1;
+    grid-row: 2;
+    height: auto;
     min-height: 0;
     width: 100%;
   }
@@ -1521,6 +1547,14 @@ tbody tr:hover {
 
   .report-main--body {
     flex: 1 1 0;
+  }
+
+  .report-layout.report-layout--has-doc .report-sidebar {
+    grid-row: 1;
+  }
+
+  .report-layout.report-layout--has-doc .report-main-stack {
+    grid-row: 2;
   }
 }
 
