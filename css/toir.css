@@ -27,6 +27,13 @@
   --control-text: #166534;
   --control-bg-active: var(--brand-accent);
   --control-text-active: #ffffff;
+  /* Фиксированная высота AI-панели (десктоп), без привязки к графикам во вкладках */
+  --ai-sidebar-height: min(92vh, 960px);
+  /* Единый ритм отступов дашборда (KPI, графики, отчёты, таблицы) */
+  --dash-card-gap: 14px;
+  --dash-section-gap: 18px;
+  /* Две колонки отчётов в одной строке сетки — общая min-height */
+  --report-layout-min-height: min(50vh, 552px);
 }
 
 *,
@@ -276,8 +283,8 @@ body {
 .kpi-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 14px;
-  margin-bottom: 14px;
+  gap: var(--dash-card-gap);
+  margin-bottom: var(--dash-card-gap);
 }
 
 .kpi-row.compact {
@@ -323,21 +330,21 @@ body {
 }
 
 .charts-area {
-  margin-bottom: 18px;
+  margin-bottom: var(--dash-section-gap);
   width: 100%;
   max-width: 100%;
 }
 
 .charts-area-main:has(#panel-charts-reports:not([hidden])) {
-  margin-bottom: 18px;
+  margin-bottom: var(--dash-section-gap);
 }
 
 .charts-area-main {
-  margin-top: 18px;
+  margin-top: var(--dash-section-gap);
 }
 
 .chart-hero {
-  margin-bottom: 14px;
+  margin-bottom: var(--dash-card-gap);
 }
 
 .chart-title-row {
@@ -362,7 +369,7 @@ body {
 .charts-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 14px;
+  gap: var(--dash-card-gap);
   margin-bottom: 0;
   min-width: 0;
 }
@@ -433,13 +440,13 @@ body {
 }
 
 .layout-main:has(#panel-charts-reports:not([hidden])) .tables-grid {
-  margin-top: -6px;
+  margin-top: 0;
 }
 
 .tables-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 14px;
+  gap: var(--dash-card-gap);
   margin-bottom: 24px;
   width: 100%;
   max-width: 100%;
@@ -584,14 +591,13 @@ tbody tr:hover {
 }
 
 .ai-log {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 1 1 0;
+  min-height: 110px;
   overflow-y: auto;
   font-size: 1rem;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  height: clamp(110px, 36vh, 300px);
   padding: 6px;
   border: var(--control-border);
   border-radius: var(--control-radius);
@@ -896,6 +902,12 @@ tbody tr:hover {
 
   .tables-grid {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .layout-sidebar.ai-panel {
+    align-self: start;
+    height: var(--ai-sidebar-height);
+    max-height: var(--ai-sidebar-height);
   }
 }
 
@@ -1414,35 +1426,32 @@ tbody tr:hover {
 /* ── Отчёт ТОиР ─────────────────────────────────── */
 
 .report-layout {
-  display: grid;
-  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
-  grid-template-rows: 1fr;
-  gap: 14px;
+  display: flex;
+  flex-direction: row;
   align-items: stretch;
-  min-height: min(48vh, 520px);
+  gap: var(--dash-card-gap);
+  min-height: var(--report-layout-min-height);
 }
 
 .report-sidebar {
-  grid-column: 1;
-  grid-row: 1;
+  flex: 0 1 300px;
+  min-width: 280px;
+  max-width: 320px;
   padding: 16px 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  min-width: 0;
+  gap: var(--dash-card-gap);
   min-height: 0;
-  align-self: stretch;
   box-sizing: border-box;
 }
 
 .report-main-stack {
-  grid-column: 2;
-  grid-row: 1;
+  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--dash-card-gap);
   align-items: stretch;
 }
 
@@ -1459,7 +1468,7 @@ tbody tr:hover {
 }
 
 .report-main--body {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
   max-height: none;
@@ -1480,28 +1489,30 @@ tbody tr:hover {
 }
 
 .report-layout.report-layout--has-doc {
-  min-height: min(48vh, 520px);
+  min-height: var(--report-layout-min-height);
 }
 
 @media (max-width: 1099px) {
   .report-layout {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto;
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .report-sidebar {
-    grid-column: 1;
-    grid-row: 1;
+    flex: 0 0 auto;
+    max-width: none;
+    width: 100%;
+    min-width: 0;
   }
 
   .report-main-stack {
-    grid-column: 1;
-    grid-row: 2;
+    flex: 1 1 auto;
     min-height: 0;
+    width: 100%;
   }
 
   .report-layout:not(.report-layout--has-doc) .report-main-stack {
-    min-height: min(360px, 70vh);
+    min-height: min(var(--report-layout-min-height), 72vh);
   }
 
   .report-head-cell {
@@ -1509,15 +1520,7 @@ tbody tr:hover {
   }
 
   .report-main--body {
-    flex: 1 1 auto;
-  }
-
-  .report-layout.report-layout--has-doc .report-sidebar {
-    grid-row: 1;
-  }
-
-  .report-layout.report-layout--has-doc .report-main-stack {
-    grid-row: 2;
+    flex: 1 1 0;
   }
 }
 
@@ -1530,9 +1533,11 @@ tbody tr:hover {
 
 .report-sidebar-head h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: clamp(1.12rem, 0.95rem + 0.45vw, 1.35rem);
   font-weight: 700;
   color: var(--tab-active-bg);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 .report-sidebar-icon {
@@ -1603,7 +1608,7 @@ tbody tr:hover {
 .reports-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--dash-card-gap);
   max-height: none;
   overflow-y: auto;
   flex: 1 1 auto;
@@ -1691,18 +1696,21 @@ tbody tr:hover {
 
 .report-main--empty {
   background: transparent;
+  padding: 0;
 }
 
 #reportView.report-main--empty.card {
   background: transparent;
   border: none;
   box-shadow: none;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 #reportView.report-main--empty .report-welcome {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -1710,23 +1718,27 @@ tbody tr:hover {
 
 #reportView.report-main--empty .report-welcome-shell {
   box-shadow: var(--shadow);
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
 #reportView.report-main--empty .report-welcome-workzone {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
 #reportView.report-main--empty .report-welcome-grid-inner {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   align-items: stretch;
+}
+
+#reportView.report-main--empty .report-welcome-brand {
+  flex: 0 0 auto;
 }
 
 .report-welcome {
@@ -1859,10 +1871,10 @@ tbody tr:hover {
 .report-welcome-grid-inner {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
+  gap: var(--dash-card-gap);
   align-items: start;
   text-align: left;
-  margin-top: 12px;
+  margin-top: var(--dash-card-gap);
   padding-top: 14px;
   border-top: 1px solid var(--border);
 }
@@ -1870,7 +1882,7 @@ tbody tr:hover {
 @media (min-width: 900px) {
   .report-welcome-grid-inner {
     grid-template-columns: minmax(0, 1fr) minmax(340px, 560px);
-    gap: 16px;
+    gap: var(--dash-card-gap);
   }
 }
 
