@@ -289,7 +289,7 @@
 
     const sub = document.getElementById("personnelDlpSub");
     if (sub) {
-      const source = payload?.meta?.source || "data/personnel_dlp_test.json";
+      const source = payload?.meta?.source || "встроено в data/toir.json";
       const count = Number(payload?.meta?.employees_count) || rows.length;
       sub.textContent = `Источник: ${source} · сотрудников: ${count}`;
     }
@@ -299,7 +299,7 @@
       if (payload?.chart && typeof Charts?.renderAgentChart === "function") {
         Charts.renderAgentChart(payload.chart, "#chartPersonnelDlp", 420);
       } else {
-        chartBox.textContent = "В файле personnel_dlp_test.json нет данных для графика";
+        chartBox.textContent = "В data/toir.json нет блока personnelUsage или нет данных для графика";
       }
     }
   }
@@ -318,7 +318,7 @@
 
     const sub = document.getElementById("personnelOrgSub");
     if (sub) {
-      const source = payload?.meta?.source || "data/personnel_org_usage.json";
+      const source = payload?.meta?.source || "встроено в data/toir.json";
       const orgCount = Number(payload?.meta?.organizations_count) || 0;
       const depCount = Number(payload?.meta?.departments_count) || 0;
       const empCount = Number(payload?.meta?.employees_count) || rows.length;
@@ -330,7 +330,7 @@
       if (payload?.chart && typeof Charts?.renderAgentChart === "function") {
         Charts.renderAgentChart(payload.chart, "#chartPersonnelOrg", 420);
       } else {
-        chartBox.textContent = "В файле personnel_org_usage.json нет данных для графика";
+        chartBox.textContent = "В data/toir.json нет блока personnelOrgUsage или нет данных для графика";
       }
     }
   }
@@ -375,16 +375,45 @@
   }
 
 
-  function renderWearImage(data) {
-    const box = document.getElementById("chartWearImage");
-    if (!box) return;
-    const src = data?.charts?.wearImage;
-    if (!src) {
-      box.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">В отчете «Процент износа» изображение не найдено.</p>';
-      return;
+  function aggregateEquipmentUsageForDonut(pctMap) {
+    const ORDER = ["0–50%", "50–100%", "100–150%", "150–200%", "Свыше 200%"];
+    const agg = {};
+    ORDER.forEach((k) => {
+      agg[k] = 0;
+    });
+    let units = 0;
+    for (const pct of Object.values(pctMap || {})) {
+      if (typeof pct !== "number" || !Number.isFinite(pct) || pct < 0) continue;
+      units++;
+      let lab = ORDER[4];
+      if (pct < 50) lab = ORDER[0];
+      else if (pct < 100) lab = ORDER[1];
+      else if (pct < 150) lab = ORDER[2];
+      else if (pct < 200) lab = ORDER[3];
+      agg[lab]++;
     }
-    const safe = escapeAttr(src);
-    box.innerHTML = `<img class="chart-image" src="${safe}" alt="Процент износа" loading="lazy" />`;
+    const labels = [];
+    const counts = [];
+    for (const lab of ORDER) {
+      if (agg[lab] > 0) {
+        labels.push(lab);
+        counts.push(agg[lab]);
+      }
+    }
+    return { labels, counts, units };
+  }
+
+  function renderEquipmentUsageDonutChart(data) {
+    const pctMap = data.tables?.equipmentUsagePct || {};
+    const sub = document.getElementById("chartWearSub");
+    const { labels, counts, units } = aggregateEquipmentUsageForDonut(pctMap);
+    if (sub) {
+      sub.textContent =
+        units > 0
+          ? `Отчёт «Список оборудования» · столбец «Процент использования» · всего ${units} ед. с числом`
+          : 'Не удалось прочитать «Процент использования» — проверьте столбец в файле «Список оборудования».';
+    }
+    Charts.renderEquipmentUsageDonut(labels, counts, "#chartEquipmentUsageDonut", 320);
   }
 
   function fillClassSelect(selectEl, classes, preferredValue) {
@@ -992,8 +1021,8 @@
       if (mttrTopSub) {
         mttrTopSub.textContent =
           cls !== "__all__"
-            ? `Топ-10 по СВВ · класс: ${cls}`
-            : "Топ-10 по СВВ · все классы";
+            ? `Топ-10 по СВР · класс: ${cls}`
+            : "Топ-10 по СВР · все классы";
       }
       const matLabSub = document.getElementById("chartMaterialLaborSub");
       if (matLabSub) {
@@ -1007,9 +1036,7 @@
         eqStructSub.textContent =
           cls !== "__all__" ? "Срез по выбранному классу" : "Доля единиц парка по классам";
       }
-      const wearSub = document.getElementById("chartWearSub");
-      if (wearSub) wearSub.textContent = "";
-      renderWearImage(data);
+      renderEquipmentUsageDonutChart(data);
 
       renderTables(agg, topProblemRows(data, monthSet, cls));
 
@@ -1060,7 +1087,7 @@
     const hasRepairWorkToken = /ремонт|работ|трудозатрат|загрузк|выполнен/i.test(ql);
     const hasOrgToken = /организац|компан|подраздел|цех|отдел/i.test(ql);
     const reliabilityCombo =
-      (/надёжност|надежност|снно|свв|mtbf|mttr|наработк|восстанов|простой/i.test(ql) || hasKtgToken) &&
+      (/надёжност|надежност|снно|свв|свр|mtbf|mttr|наработк|восстанов|простой/i.test(ql) || hasKtgToken) &&
       (/обзор|кратк|в целом|состояни|парк|дашборд|оцен|общ/i.test(ql));
 
     if (/прогноз|предска|forecast/i.test(ql)) return "forecast";
@@ -1082,7 +1109,7 @@
     if (/доля.*затрат.*класс|затрат.*по класс|структур.*затрат.*класс/i.test(ql)) return "class_cost_structure";
     if (hasKtgToken && /снно|mtbf|наработк/i.test(ql) && /причин|причины|отказов/i.test(ql)) return "reliability_combo_qa";
     if (/mtbf|снно|наработк/i.test(ql)) return "mtbf_by_equipment";
-    if (/mttr|свв|восстанов/i.test(ql)) return "mttr_by_equipment";
+    if (/mttr|свв|свр|восстанов/i.test(ql)) return "mttr_by_equipment";
     if (hasKtgToken) return "ktg_by_equipment";
     if (/топ.*затрат|лидер.*затрат|сам.*дорог|больше всего.*затрат|затрат.*оборуд/i.test(ql)) return "top_cost_equipment";
     if (/причин|отказ|дефект/i.test(ql)) return "top_failure_causes";
@@ -1225,7 +1252,7 @@
       if (Number.isFinite(defects)) parts.push(`отказов: ${U.formatCount(defects)}`);
       if (Number.isFinite(eqCount)) parts.push(`единиц парка: ${U.formatCount(eqCount)}`);
       if (mtbfAvg != null) parts.push(`средняя СННО: ${Math.round(mtbfAvg).toLocaleString("ru-RU")} ч`);
-      if (mttrAvg != null) parts.push(`средняя СВВ: ${Math.round(mttrAvg).toLocaleString("ru-RU")} ч`);
+      if (mttrAvg != null) parts.push(`средняя СВР: ${Math.round(mttrAvg).toLocaleString("ru-RU")} ч`);
       if (ktgAvg != null) parts.push(`средний КТГ: ${ktgAvg.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`);
       const tail = Number.isFinite(total) ? `Затраты: ${U.formatMoneyMln(total)}` : "";
       const head = parts.length ? `${parts.join("; ")}.` : "";
@@ -1233,7 +1260,7 @@
       return {
         fact,
         conclusion: "Сводка по ключевым метрикам надёжности и доступности парка.",
-        action: "Для узких мест разберите объекты с худшими СННО, КТГ и наибольшей СВВ.",
+        action: "Для узких мест разберите объекты с худшими СННО, КТГ и наибольшей СВР.",
       };
     }
 
@@ -1314,7 +1341,7 @@
       const worst = [...mttrRows].sort((x, y) => (Number(y.mttr_h) || 0) - (Number(x.mttr_h) || 0)).slice(0, 3);
       return {
         fact: worst.map((x) => `${x.equipment}: ${Math.round(Number(x.mttr_h) || 0).toLocaleString("ru-RU")} ч`).join("; "),
-        conclusion: "СВВ отражает длительность восстановления: чем ниже, тем лучше.",
+        conclusion: "СВР отражает длительность восстановления: чем ниже, тем лучше.",
         action: "Проверьте обеспеченность ЗИП и регламенты ремонта для этих объектов.",
       };
     }
@@ -1955,11 +1982,9 @@
 
   async function boot() {
     try {
-      const [dashRes, brandRes, personnelRes, personnelOrgRes] = await Promise.all([
+      const [dashRes, brandRes] = await Promise.all([
         fetch("data/toir.json", { cache: "no-store" }),
         fetch("assets/brand.json", { cache: "no-store" }),
-        fetch("data/personnel_dlp_test.json", { cache: "no-store" }),
-        fetch("data/personnel_org_usage.json", { cache: "no-store" }),
       ]);
       const data = await dashRes.json();
       window.dashboardData = data;
@@ -1967,22 +1992,10 @@
         const brand = await brandRes.json();
         U.applyBrandTokens(brand);
       }
-      let personnelData = null;
-      if (personnelRes.ok) {
-        try {
-          personnelData = await personnelRes.json();
-        } catch (personnelErr) {
-          console.warn("Failed to parse personnel_dlp_test.json", personnelErr);
-        }
-      }
-      let personnelOrgData = null;
-      if (personnelOrgRes.ok) {
-        try {
-          personnelOrgData = await personnelOrgRes.json();
-        } catch (personnelOrgErr) {
-          console.warn("Failed to parse personnel_org_usage.json", personnelOrgErr);
-        }
-      }
+      const personnelData =
+        data.personnelUsage && typeof data.personnelUsage === "object" ? data.personnelUsage : null;
+      const personnelOrgData =
+        data.personnelOrgUsage && typeof data.personnelOrgUsage === "object" ? data.personnelOrgUsage : null;
       wireUi(data);
       renderPersonnelDlp(personnelData);
       renderPersonnelOrgUsage(personnelOrgData);

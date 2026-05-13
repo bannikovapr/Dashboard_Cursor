@@ -11,6 +11,9 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="css/toir.css" />
+    <script>
+      window.TOIR_API_URL = window.TOIR_API_URL || "http://localhost:8787/api/chat";
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.54.1"></script>
   </head>
   <body>
@@ -59,8 +62,8 @@
               <button type="button" class="tab" data-tab="costs">Затраты</button>
               <button type="button" class="tab" data-tab="reliability">Надёжность</button>
               <button type="button" class="tab" data-tab="equipment">Оборудование</button>
-              <button type="button" class="tab tab--pill-outline" data-tab="diagnostics">Диагностики</button>
-              <button type="button" class="tab tab--pill-cta" data-tab="reports">Отчёт ТОиР</button>
+              <button type="button" class="tab" data-tab="diagnostics">Диагностики</button>
+              <button type="button" class="tab" data-tab="reports">Отчёт ТОиР</button>
             </div>
           </div>
         </header>
@@ -161,12 +164,12 @@
               </div>
               <div class="card chart-card" id="personnelDlpSection" hidden>
                 <div class="chart-title">Ремонтные работы сотрудников за год (трудозатраты)</div>
-                <div class="chart-sub" id="personnelDlpSub">Источник: data/personnel_dlp_test.json</div>
+                <div class="chart-sub" id="personnelDlpSub">Источник: data/toir.json (Использование персонала)</div>
                 <div class="chart-box chart-box--personnel-dlp" id="chartPersonnelDlp"></div>
               </div>
               <div class="card chart-card" id="personnelOrgSection" hidden>
                 <div class="chart-title">Анализ использования персонала по организациям</div>
-                <div class="chart-sub" id="personnelOrgSub">Источник: data/personnel_org_usage.json</div>
+                <div class="chart-sub" id="personnelOrgSub">Источник: data/toir.json (Анализ использования персонала)</div>
                 <div class="chart-box chart-box--personnel-dlp" id="chartPersonnelOrg"></div>
               </div>
             </div>
@@ -190,7 +193,7 @@
                 <div class="chart-box" id="chartMtbfTop"></div>
               </div>
               <div class="card chart-card">
-                <div class="chart-title">СВВ по объектам (топ)</div>
+                <div class="chart-title">СВР по объектам (топ)</div>
                 <div class="chart-sub" id="chartMttrTopSub">Среднее время восстановления, ч (чем ниже, тем лучше)</div>
                 <div class="chart-box" id="chartMttrTop"></div>
               </div>
@@ -205,9 +208,9 @@
                 <div class="chart-box" id="chartStructureEq"></div>
               </div>
               <div class="card chart-card">
-                <div class="chart-title">Процент износа</div>
-                <div class="chart-sub chart-sub-hidden" id="chartWearSub"></div>
-                <div class="chart-box chart-box--image" id="chartWearImage"></div>
+                <div class="chart-title">Процент использования парка</div>
+                <div class="chart-sub" id="chartWearSub">Список оборудования · столбец «Процент использования»</div>
+                <div class="chart-box" id="chartEquipmentUsageDonut"></div>
               </div>
               <div class="card chart-card">
                 <div class="chart-title">Затраты по классам</div>
@@ -253,21 +256,21 @@
 
           <div id="panel-charts-reports" class="panel-charts" data-panel="reports" hidden>
             <div class="report-layout">
-              <div class="report-sidebar-top card">
+              <aside class="report-sidebar card" aria-label="Список отчётов">
                 <div class="report-sidebar-head">
                   <h3>Отчёты</h3>
                   <button type="button" id="reportsRefreshBtn" class="report-sidebar-icon" title="Обновить список">↻</button>
                 </div>
-                <div id="reportsStatus" class="report-status"></div>
                 <button type="button" id="reportsCreateBtn" class="report-sidebar-cta">
                   + Создать отчёт по текущему срезу
                 </button>
-              </div>
-              <div id="reportHeadCell" class="report-head-cell card" aria-live="polite"></div>
-              <div class="report-sidebar-list card">
+                <div id="reportsStatus" class="report-status"></div>
                 <div id="reportsList" class="reports-list"></div>
+              </aside>
+              <div class="report-main-stack">
+                <div id="reportHeadCell" class="report-head-cell card" aria-live="polite"></div>
+                <section class="report-main card report-main--body" id="reportView"></section>
               </div>
-              <section class="report-main card report-main--body" id="reportView"></section>
             </div>
           </div>
         </div>

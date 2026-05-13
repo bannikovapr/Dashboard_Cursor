@@ -242,6 +242,45 @@
     apexBySelector[targetSel].render();
   }
 
+  /** Круговая диаграмма долей парка по диапазонам «Процент использования» (оформление как «Доля затрат по классам»). */
+  function renderEquipmentUsageDonut(labels, counts, targetSel = "#chartEquipmentUsageDonut", height = 320) {
+    const el = document.querySelector(targetSel);
+    if (!el) return;
+    const total = counts.reduce((a, b) => a + b, 0);
+    if (!labels.length || !total) {
+      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных по проценту использования.</p>';
+      dispose(targetSel);
+      return;
+    }
+    dispose(targetSel);
+    el.innerHTML = "";
+    const opts = {
+      ...chartLayout(height, "donut"),
+      labels,
+      series: counts,
+      colors: categoricalPalette(),
+      legend: { position: "bottom", fontSize: "11px" },
+      plotOptions: {
+        pie: {
+          donut: {
+            size: "68%",
+          },
+        },
+      },
+      tooltip: {
+        y: {
+          formatter: (val) => {
+            const n = Number(val);
+            const pctShare = total ? (100 * n) / total : 0;
+            return `${n.toLocaleString("ru-RU")} ед. (${pctShare.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}% парка)`;
+          },
+        },
+      },
+    };
+    apexBySelector[targetSel] = new ApexCharts(el, opts);
+    apexBySelector[targetSel].render();
+  }
+
   function renderTopDowntime(names, hours, targetSel = "#chartTopDowntime", height = 320) {
     const el = document.querySelector(targetSel);
     if (!el) return;
@@ -409,7 +448,7 @@
     const el = document.querySelector(targetSel);
     if (!el) return;
     if (!names.length) {
-      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных СВВ в срезе.</p>';
+      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных СВР в срезе.</p>';
       dispose(targetSel);
       return;
     }
@@ -420,7 +459,7 @@
       ...chartLayout(height, "bar"),
       grid: { padding: { left: 24, right: 0 } },
       plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3 } },
-      series: [{ name: "СВВ, ч", data: hours }],
+      series: [{ name: "СВР, ч", data: hours }],
       colors: [chartBarColor()],
       xaxis: { categories: cat },
       yaxis: { labels: { maxWidth: 220, style: { fontSize: "13px" } } },
@@ -522,11 +561,19 @@
           maxHeight: 80,
         },
       },
-      yaxis: {
-        labels: {
-          formatter: (v) => formatCompactNumber(v),
-        },
-      },
+      // Горизонтальный bar: метки категорий на оси Y; числовой formatter давал «0» вместо ФИО.
+      yaxis: isHorizontalBar
+        ? {
+            labels: {
+              maxWidth: 220,
+              style: { colors: "#64748b", fontSize: "12px" },
+            },
+          }
+        : {
+            labels: {
+              formatter: (v) => formatCompactNumber(v),
+            },
+          },
       series: series.map((s, i) => ({
         name: s.name || `Серия ${i + 1}`,
         data: s.data || [],
@@ -560,6 +607,7 @@
     renderFailureCauses,
     renderTopEquipmentCost,
     renderClassCostDonut,
+    renderEquipmentUsageDonut,
     renderTopDowntime,
     renderTopDefects,
     renderClassQtyColumn,

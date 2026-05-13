@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Анализ ТОиР-данных из 7 отдельных отчетов Excel.
-Извлекает: затраты по объектам, причины отказов, КТГ, простои.
+Анализ ТОиР-данных из 7 отдельных отчётов Excel + опционально данные персонала.
+Извлекает: затраты по объектам, причины отказов, КТГ, простои; при наличии файлов —
+«Использование персонала» и «Анализ использования персонала» встраиваются в тот же JSON.
 Формирует data/toir.json.
 """
 from __future__ import annotations
@@ -11,6 +12,8 @@ from datetime import datetime
 from pathlib import Path
 
 import openpyxl
+
+import personnel_reports
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 OUT = DATA_DIR / "toir.json"
@@ -486,6 +489,69 @@ def parse_ktg(wb):
     return equip_ktg
 
 
+def parse_usage_percentage_value(v):
+    """Число из ячейки «Процент использования» (54.37 или «54,37 %»)."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        x = float(v)
+        if x != x or x < 0:
+            return None
+        return x
+    s = str(v).strip().replace("\xa0", "").replace("%", "").replace(" ", "").replace(",", ".")
+    if not s:
+        return None
+    try:
+        x = float(s)
+    except ValueError:
+        return None
+    if x < 0:
+        return None
+    return x
+
+
+def parse_equipment_list_usage_pct(wb) -> dict[str, float]:
+    """
+    Столбец «Процент использования» на первом листе «Список оборудования».
+    Ключ — наименование объекта (первый столбец строки данных).
+    """
+    ws = wb[wb.sheetnames[0]]
+    rows = all_rows(ws)
+    pct_col = None
+    header_row = None
+    for i, row in enumerate(rows[:80]):
+        if not row:
+            continue
+        for j, val in enumerate(row):
+            c = cell(val)
+            if isinstance(c, str):
+                low = c.lower().replace("ё", "е")
+                if "процент" in low and "использован" in low:
+                    pct_col = j
+                    header_row = i
+                    break
+        if pct_col is not None:
+            break
+    if pct_col is None or header_row is None:
+        return {}
+
+    out: dict[str, float] = {}
+    for row in rows[header_row + 1 :]:
+        if not row or pct_col >= len(row):
+            continue
+        nm = cell(row[0])
+        if not nm or not isinstance(nm, str):
+            continue
+        name = nm.strip()
+        if len(name) < 2:
+            continue
+        pct = parse_usage_percentage_value(row[pct_col])
+        if pct is None:
+            continue
+        out[name] = round(pct, 4)
+    return out
+
+
 def extract_wear_report_image() -> str | None:
     """
     Извлекает первую картинку из отчета «Процент износа.xlsx» и сохраняет в assets/generated.
@@ -544,6 +610,7 @@ def main():
     repair_events = parse_repair_events(wb_fail)
     material_labor = parse_material_labor_monthly(wb_analysis)
     wear_image = extract_wear_report_image()
+    equipment_usage_pct = parse_equipment_list_usage_pct(sources["Список оборудования"])
 
     for wb in sources.values():
         wb.close()
@@ -604,6 +671,7 @@ def main():
             "ktg": ktg_data,
             "equipmentDefects": equip_defects,
             "repairEvents": repair_events,
+            "equipmentUsagePct": equipment_usage_pct,
         },
         "analysis": {
             "top3_cost_leaders": [
@@ -619,6 +687,20 @@ def main():
             "monthly_costs_sorted": sorted_monthly,
         },
     }
+
+    pu = None
+    po = None
+    try:
+        pu = personnel_reports.build_personnel_usage_payload(DATA_DIR)
+    except Exception as ex:
+        print(f"WARN: personnelUsage не собран: {ex}")
+    try:
+        po = personnel_reports.build_personnel_org_payload(DATA_DIR)
+    except Exception as ex:
+        print(f"WARN: personnelOrgUsage не собран: {ex}")
+
+    toir_json["personnelUsage"] = pu
+    toir_json["personnelOrgUsage"] = po
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(toir_json, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -647,6 +729,18 @@ def main():
         print(f"  {m:20s} {v:>12,.0f} rub.  {bar}")
 
     print(f"\nSaved: {OUT}")
+    print(f"Процент использования (Список оборудования): объектов с показателем — {len(equipment_usage_pct)}")
+    if pu:
+        print(f"Встроено personnelUsage: сотрудников {pu['meta'].get('employees_count')}, файл {pu['meta'].get('source')}")
+    else:
+        print("personnelUsage: нет (нет отчёта «Использование персонала» или ошибка разбора)")
+    if po:
+        print(
+            f"Встроено personnelOrgUsage: орг. {po['meta'].get('organizations_count')}, "
+            f"подр. {po['meta'].get('departments_count')}, файл {po['meta'].get('source')}"
+        )
+    else:
+        print("personnelOrgUsage: нет (нет отчёта «Анализ использования персонала» или ошибка разбора)")
     return 0
 
 
