@@ -2,7 +2,6 @@
   "use strict";
 
   const STATE = {
-    apiBase: null,
     catalog: [],
     mandatory: [],
     reports: [],
@@ -15,19 +14,16 @@
   };
 
   function getApiBase() {
-    if (STATE.apiBase) return STATE.apiBase;
     const chatUrl = root.TOIR_API_URL || "";
     if (chatUrl) {
       try {
         const u = new URL(chatUrl);
-        STATE.apiBase = `${u.origin}/api/reports`;
-        return STATE.apiBase;
+        return `${u.origin}/api/reports`;
       } catch (e) {
-        // fallthrough
+        /* fallthrough */
       }
     }
-    STATE.apiBase = "http://localhost:8787/api/reports";
-    return STATE.apiBase;
+    return "http://localhost:8787/api/reports";
   }
 
   async function api(path, options) {
@@ -185,18 +181,6 @@
     return String(cls);
   }
 
-  function describeLastReportLine() {
-    const arr = (STATE.reports || []).slice();
-    if (!arr.length) return "Пока нет сохранённых отчётов.";
-    arr.sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime());
-    const r = arr[0];
-    const cls = r.snapshot && r.snapshot.class_filter && r.snapshot.class_filter !== "__all__"
-      ? r.snapshot.class_filter
-      : "все классы";
-    const per = (r.snapshot && r.snapshot.period_label) || "—";
-    return `«${r.title || r.report_id}» · ${per} · ${cls} · ${fmtDate(r.updated_at)} · ред. ${r.revision_count || 0}`;
-  }
-
   function updateWelcomeSlice() {
     const periodEl = document.getElementById("reportSlicePeriod");
     if (!periodEl) return;
@@ -206,8 +190,6 @@
     if (classEl) classEl.textContent = classLabelRu(f.class);
     const countEl = document.getElementById("reportSliceCount");
     if (countEl) countEl.textContent = String((STATE.reports || []).length);
-    const last = document.getElementById("reportLastLine");
-    if (last) last.textContent = describeLastReportLine();
   }
 
   function syncSliceFromDashboard() {
@@ -217,7 +199,25 @@
   }
 
   function updateWelcomeExportState() {
-    const has = (STATE.reports || []).length > 0;
+    const latest = (STATE.reports && STATE.reports.length) ? STATE.reports[0] : null;
+    const has = !!latest;
+    const canUndo = has && Number(latest.revision_count || 0) >= 2;
+
+    const editBtn = document.getElementById("reportWelcomeEditTitle");
+    if (editBtn) {
+      editBtn.disabled = !has;
+      editBtn.title = has ? "Изменить заголовок последнего сохранённого отчёта" : "Сначала создайте отчёт";
+    }
+    const undoBtn = document.getElementById("reportWelcomeUndo");
+    if (undoBtn) {
+      undoBtn.disabled = !canUndo;
+      undoBtn.title = canUndo
+        ? "Откатить последний сохранённый отчёт на предыдущую ревизию"
+        : has
+          ? "Для отката нужно минимум две ревизии"
+          : "Сначала создайте отчёт";
+    }
+
     const dd = document.getElementById("reportWelcomeExportDropdown");
     if (dd) {
       dd.classList.toggle("report-export-dropdown--disabled", !has);
@@ -248,8 +248,8 @@
                 <img
                   class="brand-logo-img"
                   src="assets/desnol-userpic.png"
-                  width="90"
-                  height="90"
+                  width="64"
+                  height="64"
                   alt="Desnol"
                   decoding="async"
                 />
@@ -269,50 +269,45 @@
           <div class="report-welcome-workzone" aria-label="Действия и срез">
             <div class="report-welcome-grid-inner">
               <div class="report-welcome-main-col">
-                <div class="report-welcome-toolbar-row report-welcome-toolbar-row--top" role="toolbar" aria-label="Действия">
-                  <button type="button" id="reportWelcomeCreate" class="btn-report-toolbar btn-report-toolbar--pill">
-                    + Создать отчёт
-                  </button>
-                  <button type="button" id="reportWelcomeRefresh" class="btn-report-secondary-welcome">Обновить список</button>
-                </div>
                 <ol class="report-welcome-steps">
                   <li>Проверьте в шапке период и класс оборудования — новый отчёт строится для этого среза.</li>
-                  <li>Нажмите «Создать отчёт» и при необходимости отредактируйте заголовок.</li>
+                  <li>Нажмите «+ Создать отчёт по текущему срезу» в списке слева и при необходимости отредактируйте заголовок.</li>
                   <li>Откройте отчёт в списке слева: правьте секции, при необходимости обновите снимок или откатите ревизию.</li>
-                  <li>Выгрузку можно сделать из открытого отчёта или в блоке справа — будет использован <strong>последний сохранённый</strong> отчёт, если ни один не открыт.</li>
+                  <li>Кнопки справа (заголовок, обновление списка, откат, выгрузка) работают с <strong>последним сохранённым</strong> отчётом, пока ни один не открыт в центральной области.</li>
                 </ol>
               </div>
               <div class="report-welcome-aside">
                 <div class="report-welcome-compact-panel">
-                  <div class="report-welcome-toolbar-row" role="toolbar" aria-label="Обновление и выгрузка">
-                    <button type="button" id="reportWelcomeRefreshIcon" class="btn-report-toolbar btn-report-toolbar--icon" title="Обновить список" aria-label="Обновить список">↻</button>
-                    <details class="report-export-dropdown" id="reportWelcomeExportDropdown">
-                      <summary class="report-export-summary">Выгрузить отчёт <span class="report-export-caret" aria-hidden="true">▼</span></summary>
-                      <div class="report-export-menu" id="reportWelcomeExportMenu" role="menu">
-                        <button type="button" class="report-export-menu-item" data-export="html" id="reportWelcomeExportHtml">HTML</button>
-                        <button type="button" class="report-export-menu-item" data-export="docx" id="reportWelcomeExportDocx">DOCX</button>
-                        <button type="button" class="report-export-menu-item" data-export="pdf" id="reportWelcomeExportPdf">PDF</button>
-                        <button type="button" class="report-export-menu-item" data-export="print" id="reportWelcomePrint">Печать…</button>
-                      </div>
-                    </details>
+                  <div class="report-toolbar-cluster report-toolbar-cluster--welcome">
+                    <div class="report-doc-actions report-doc-actions--welcome" role="toolbar" aria-label="Действия с последним отчётом">
+                      <button type="button" id="reportWelcomeEditTitle" class="btn-report-toolbar btn-report-toolbar--pill" title="Изменить заголовок">Заголовок</button>
+                      <button type="button" id="reportWelcomeRefreshIcon" class="btn-report-toolbar btn-report-toolbar--icon" title="Обновить список отчётов" aria-label="Обновить список отчётов">↻</button>
+                      <button type="button" id="reportWelcomeUndo" class="btn-report-toolbar btn-report-toolbar--pill" disabled>↶ Откатить</button>
+                      <details class="report-export-dropdown" id="reportWelcomeExportDropdown">
+                        <summary class="report-export-summary" aria-label="Выгрузить отчёт">Выгрузить отчёт <span class="report-export-caret" aria-hidden="true">▼</span></summary>
+                        <div class="report-export-menu" id="reportWelcomeExportMenu" role="menu">
+                          <button type="button" class="report-export-menu-item" data-export="html" id="reportWelcomeExportHtml">HTML</button>
+                          <button type="button" class="report-export-menu-item" data-export="docx" id="reportWelcomeExportDocx">DOCX</button>
+                          <button type="button" class="report-export-menu-item" data-export="pdf" id="reportWelcomeExportPdf">PDF</button>
+                          <button type="button" class="report-export-menu-item" data-export="print" id="reportWelcomePrint">Печать…</button>
+                        </div>
+                      </details>
+                    </div>
                   </div>
-                  <div class="report-slice-cards report-slice-cards--compact">
-                    <div class="report-slice-card">
+                  <div class="report-welcome-steps report-welcome-steps--slice" aria-label="Текущий срез дашборда">
+                    <div class="report-slice-row">
                       <div class="report-slice-label">Текущий период</div>
                       <div class="report-slice-value" id="reportSlicePeriod">—</div>
                     </div>
-                    <div class="report-slice-card">
+                    <div class="report-slice-row">
                       <div class="report-slice-label">Класс оборудования</div>
                       <div class="report-slice-value" id="reportSliceClass">—</div>
                     </div>
-                    <div class="report-slice-card">
+                    <div class="report-slice-row">
                       <div class="report-slice-label">Сохранённых отчётов</div>
                       <div class="report-slice-value" id="reportSliceCount">0</div>
                     </div>
                   </div>
-                  <p class="report-welcome-foot" id="reportLastHint">
-                    Последний отчёт: <span id="reportLastLine">—</span>
-                  </p>
                 </div>
               </div>
             </div>
@@ -489,37 +484,42 @@
     const cls = snap.class_filter && snap.class_filter !== "__all__" ? snap.class_filter : "все классы";
     const undoDisabled = (document_.revisions || []).length < 2;
     head.innerHTML = `
+      <div class="top-header report-doc-top-header">
+        <div class="brand-band">
+          <img
+            class="brand-logo-img"
+            src="assets/desnol-userpic.png"
+            width="64"
+            height="64"
+            alt="Desnol"
+            decoding="async"
+          />
+          <div class="brand-lockup">
+            <div class="titles">
+              <h1 id="reportDocTitle">${escapeHtml(document_.title || "")}</h1>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="report-doc-toolbar">
-        <div class="report-doc-toolbar-row">
+        <div class="report-toolbar-cluster">
           <div class="report-doc-actions" role="toolbar" aria-label="Действия с документом">
             <button type="button" id="reportEditTitle" class="btn-report-toolbar btn-report-toolbar--pill" title="Изменить заголовок">Заголовок</button>
             <button type="button" id="reportRefresh" class="btn-report-toolbar btn-report-toolbar--icon" title="Обновить снимок по новым данным" aria-label="Обновить снимок по новым данным">↻</button>
             <button type="button" id="reportUndo" class="btn-report-toolbar btn-report-toolbar--pill" ${undoDisabled ? "disabled" : ""}>↶ Откатить</button>
+            <details class="report-export-dropdown" id="reportExportDropdown">
+              <summary class="report-export-summary" aria-label="Выгрузить отчёт">Выгрузить отчёт <span class="report-export-caret" aria-hidden="true">▼</span></summary>
+              <div class="report-export-menu" id="reportExportMenu" role="menu">
+                <button type="button" role="menuitem" id="reportExportHtml" class="report-export-menu-item" data-export="html">HTML</button>
+                <button type="button" role="menuitem" id="reportExportDocx" class="report-export-menu-item" data-export="docx">DOCX</button>
+                <button type="button" role="menuitem" id="reportExportPdf" class="report-export-menu-item" data-export="pdf">PDF</button>
+                <button type="button" role="menuitem" id="reportPrint" class="report-export-menu-item" data-export="print">Печать…</button>
+              </div>
+            </details>
           </div>
-          <details class="report-export-dropdown" id="reportExportDropdown">
-            <summary class="report-export-summary" aria-label="Выгрузить отчёт">Выгрузить отчёт <span class="report-export-caret" aria-hidden="true">▼</span></summary>
-            <div class="report-export-menu" id="reportExportMenu" role="menu">
-              <button type="button" role="menuitem" id="reportExportHtml" class="report-export-menu-item" data-export="html">HTML</button>
-              <button type="button" role="menuitem" id="reportExportDocx" class="report-export-menu-item" data-export="docx">DOCX</button>
-              <button type="button" role="menuitem" id="reportExportPdf" class="report-export-menu-item" data-export="pdf">PDF</button>
-              <button type="button" role="menuitem" id="reportPrint" class="report-export-menu-item" data-export="print">Печать…</button>
-            </div>
-          </details>
         </div>
       </div>
       <div class="report-doc-hero">
-        <div class="report-doc-hero-brand">
-          <img
-            class="report-doc-hero-mark"
-            src="assets/desnol-mark.svg"
-            alt=""
-            width="40"
-            height="40"
-            decoding="async"
-          />
-          <span class="report-doc-hero-wordmark" aria-label="Деснол">Деснол</span>
-        </div>
-        <h2 class="report-doc-hero-title" id="reportDocTitle">${escapeHtml(document_.title || "")}</h2>
         <p class="report-doc-hero-tagline">Стратегический дашборд ТОиР · экспорт документа</p>
         <div class="report-doc-hero-chips" aria-label="Параметры отчёта">
           <span class="report-doc-chip">Период: ${escapeHtml(snap.period_label || "—")}</span>
@@ -584,6 +584,23 @@
   }
 
   async function loadLogoDataUrl() {
+    async function dataUrlFromAsset(assetPath) {
+      try {
+        const res = await fetch(assetPath, { cache: "force-cache" });
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        return await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result || null);
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(blob);
+        });
+      } catch (e) {
+        return null;
+      }
+    }
+    const userpic = await dataUrlFromAsset("assets/desnol-userpic.png");
+    if (userpic) return userpic;
     try {
       const resSvg = await fetch("assets/desnol-logo.svg", { cache: "force-cache" });
       if (resSvg.ok) {
@@ -593,28 +610,37 @@
     } catch (e) {
       /* fallthrough */
     }
-    try {
-      const res = await fetch("assets/report-brand-logo.png", { cache: "force-cache" });
-      if (!res.ok) return null;
-      const blob = await res.blob();
-      return await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result || null);
-        reader.onerror = () => resolve(null);
-        reader.readAsDataURL(blob);
-      });
-    } catch (e) {
-      return null;
-    }
+    return await dataUrlFromAsset("assets/report-brand-logo.png");
   }
 
   async function downloadFromApi(url, filename) {
-    const response = await fetch(url, { credentials: "same-origin" });
+    let response;
+    try {
+      response = await fetch(url, {
+        method: "GET",
+        mode: "cors",
+        credentials: "omit",
+        cache: "no-store",
+      });
+    } catch (e) {
+      const base = "Сеть: запрос к API не выполнен.";
+      const hint =
+        typeof (e && e.message) === "string" && /fail|network|load/i.test(e.message)
+          ? " Убедитесь, что сервер запущен (npm run start:api), порт в .env (API_PORT) совпадает с адресом в TOIR_API_URL. При открытии index.html через file:// включена поддержка CORS для null-origin — обновите сервер."
+          : "";
+      throw new Error(`${base} ${(e && e.message) || e}.${hint}`);
+    }
     if (!response.ok) {
       let msg = `HTTP ${response.status}`;
+      const ct = response.headers.get("content-type") || "";
       try {
-        const j = await response.json();
-        if (j && j.message) msg = j.message;
+        if (ct.includes("application/json")) {
+          const j = await response.json();
+          if (j && j.message) msg = j.message;
+        } else {
+          const t = await response.text();
+          if (t && t.length < 400) msg = `${msg}: ${t.trim().slice(0, 300)}`;
+        }
       } catch (e) {
         /* ignore */
       }
@@ -1089,19 +1115,65 @@
     if (!reportView) return;
     STATE.welcomeClickBound = true;
     reportView.addEventListener("click", (ev) => {
-      if (ev.target.closest("#reportWelcomeCreate")) {
+      if (ev.target.closest("#reportWelcomeEditTitle")) {
         ev.preventDefault();
-        createNewReport();
-        return;
-      }
-      if (ev.target.closest("#reportWelcomeRefresh")) {
-        ev.preventDefault();
-        loadList();
+        (async () => {
+          try {
+            const doc_ = await resolveDocForExport();
+            if (!doc_) {
+              setStatus("Нет отчёта — сначала создайте отчёт.", "warn");
+              return;
+            }
+            const next = prompt("Новый заголовок отчёта:", doc_.title || "");
+            if (next === null) return;
+            const trimmed = String(next).trim();
+            if (!trimmed) return;
+            const res = await api(`/${encodeURIComponent(doc_.report_id)}`, {
+              method: "PUT",
+              body: { title: trimmed },
+            });
+            if (STATE.activeReportId === doc_.report_id) {
+              STATE.activeDocument = res.report;
+              renderDocument(res.report);
+            }
+            await loadList();
+            setStatus("Заголовок обновлён.", "info");
+          } catch (e) {
+            setStatus(`Не удалось изменить заголовок: ${e.message}`, "error");
+          }
+        })();
         return;
       }
       if (ev.target.closest("#reportWelcomeRefreshIcon")) {
         ev.preventDefault();
         loadList();
+        return;
+      }
+      if (ev.target.closest("#reportWelcomeUndo")) {
+        ev.preventDefault();
+        (async () => {
+          try {
+            const doc_ = await resolveDocForExport();
+            if (!doc_) {
+              setStatus("Нет отчёта — сначала создайте отчёт.", "warn");
+              return;
+            }
+            if ((doc_.revisions || []).length < 2) {
+              setStatus("Нет предыдущей ревизии для отката.", "warn");
+              return;
+            }
+            if (!confirm("Откатить отчёт на предыдущую ревизию?")) return;
+            const res = await api(`/${encodeURIComponent(doc_.report_id)}/undo`, { method: "POST" });
+            if (STATE.activeReportId === doc_.report_id) {
+              STATE.activeDocument = res.report;
+              renderDocument(res.report);
+            }
+            await loadList();
+            setStatus("Откат выполнен.", "info");
+          } catch (e) {
+            setStatus(`Не удалось откатить: ${e.message}`, "error");
+          }
+        })();
         return;
       }
       const runExport = async (fn) => {
