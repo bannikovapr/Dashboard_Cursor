@@ -325,13 +325,30 @@ function undoLastRevision(reportId) {
   return document;
 }
 
-function refreshSnapshot(reportId) {
+function refreshSnapshot(reportId, payload) {
   const document = loadReport(reportId);
   const rawData = loadRawData();
-  const filters = {
-    period: (document.snapshot && document.snapshot.period) || "all",
-    class: (document.snapshot && document.snapshot.class_filter) || "__all__",
-  };
+  const snap = document.snapshot || {};
+  const bodyFilters = payload && payload.filters && typeof payload.filters === "object" ? payload.filters : null;
+  const hasOverride =
+    bodyFilters &&
+    (Object.prototype.hasOwnProperty.call(bodyFilters, "period") ||
+      Object.prototype.hasOwnProperty.call(bodyFilters, "class"));
+  const filters = hasOverride
+    ? {
+        period:
+          bodyFilters.period != null && String(bodyFilters.period).trim() !== ""
+            ? String(bodyFilters.period)
+            : snap.period || "all",
+        class:
+          bodyFilters.class != null && String(bodyFilters.class).trim() !== ""
+            ? String(bodyFilters.class)
+            : snap.class_filter || "__all__",
+      }
+    : {
+        period: snap.period || "all",
+        class: snap.class_filter || "__all__",
+      };
   const { snapshot, factPack } = buildSnapshotAndFactPack(rawData, filters);
   document.snapshot = snapshot;
   document.fact_pack = factPack;

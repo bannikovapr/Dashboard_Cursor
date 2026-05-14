@@ -181,10 +181,27 @@
     return String(cls);
   }
 
+  /** Срез дашборда для API отчёта: callback из toir-app или прямое чтение селекторов шапки. */
+  function collectDashboardFilters() {
+    if (typeof STATE.getCurrentFilters === "function") {
+      const f = STATE.getCurrentFilters();
+      return {
+        period: (f && f.period) || "all",
+        class: (f && f.class) || "__all__",
+      };
+    }
+    const periodEl = document.getElementById("panelPeriod");
+    const classEl = document.getElementById("panelClass");
+    return {
+      period: (periodEl && periodEl.value) || "all",
+      class: (classEl && classEl.value) || "__all__",
+    };
+  }
+
   function updateWelcomeSlice() {
     const periodEl = document.getElementById("reportSlicePeriod");
     if (!periodEl) return;
-    const f = typeof STATE.getCurrentFilters === "function" ? STATE.getCurrentFilters() : {};
+    const f = collectDashboardFilters();
     periodEl.textContent = periodLabelRu(f.period);
     const classEl = document.getElementById("reportSliceClass");
     if (classEl) classEl.textContent = classLabelRu(f.class);
@@ -193,8 +210,6 @@
   }
 
   function syncSliceFromDashboard() {
-    const panel = document.getElementById("reportView");
-    if (!panel || !panel.classList.contains("report-main--empty")) return;
     updateWelcomeSlice();
   }
 
@@ -798,9 +813,19 @@
     const refreshBtn = document.getElementById("reportRefresh");
     if (refreshBtn) {
       refreshBtn.addEventListener("click", async () => {
-        if (!confirm("Обновить снимок по текущим данным toir.json? Тексты секций сохранятся, обновятся только подтверждающие факты и появятся пометки в секциях.")) return;
+        const filters = collectDashboardFilters();
+        const sliceHint = `Текущие фильтры дашборда: ${periodLabelRu(filters.period)}, ${classLabelRu(filters.class)}.`;
+        if (
+          !confirm(
+            `${sliceHint}\n\nОбновить снимок по актуальному toir.json и этому срезу? Тексты секций сохранятся, пересчитаются факты; в секциях появятся пометки.`
+          )
+        )
+          return;
         try {
-          const res = await api(`/${encodeURIComponent(doc_.report_id)}/refresh_snapshot`, { method: "POST" });
+          const res = await api(`/${encodeURIComponent(doc_.report_id)}/refresh_snapshot`, {
+            method: "POST",
+            body: { filters },
+          });
           STATE.activeDocument = res.report;
           renderDocument(res.report);
           await loadList();
@@ -1088,14 +1113,15 @@
   }
 
   async function createNewReport() {
-    const filters = (typeof STATE.getCurrentFilters === "function")
-      ? STATE.getCurrentFilters()
-      : { period: "all", class: "__all__" };
+    const filters = collectDashboardFilters();
     const defaultTitle = `Отчёт ТОиР: ${filters && filters.period === "h1" ? "1-е полугодие 2025" : filters && filters.period === "h2" ? "2-е полугодие 2025" : "12 мес."}` +
       (filters && filters.class && filters.class !== "__all__" ? ` · ${filters.class}` : "");
     const title = prompt("Заголовок отчёта (можно оставить по умолчанию):", defaultTitle);
     if (title === null) return;
-    setStatus("Создание отчёта…", "info");
+    setStatus(
+      `Создание отчёта (срез: ${periodLabelRu(filters.period)}, ${classLabelRu(filters.class)})…`,
+      "info"
+    );
     try {
       const res = await api("/", {
         method: "POST",

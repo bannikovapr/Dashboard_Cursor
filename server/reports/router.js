@@ -5,6 +5,7 @@ const service = require("./service");
 const config = require("./config");
 const pdfExport = require("./pdf-export");
 const docxExport = require("./docx-export");
+const { asciiAttachmentDispositionForReport } = require("./content-disposition");
 
 const router = express.Router();
 
@@ -95,7 +96,7 @@ router.post("/:id/undo", (req, res) => {
 
 router.post("/:id/refresh_snapshot", (req, res) => {
   try {
-    const document = service.refreshSnapshot(req.params.id);
+    const document = service.refreshSnapshot(req.params.id, req.body || {});
     res.json({ ok: true, report: document });
   } catch (e) {
     sendError(res, e);
@@ -106,12 +107,8 @@ router.get("/:id/export/docx", async (req, res) => {
   try {
     const document = service.loadReport(req.params.id);
     const buf = await docxExport.buildReportDocxBuffer(document);
-    const name = docxExport.suggestedDocxFilename(document);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${name}"; filename*=UTF-8''${encodeURIComponent(name)}`
-    );
+    res.setHeader("Content-Disposition", asciiAttachmentDispositionForReport(document, ".docx"));
     res.send(Buffer.from(buf));
   } catch (e) {
     sendError(res, e);
@@ -122,12 +119,8 @@ router.get("/:id/export/pdf", async (req, res) => {
   try {
     const document = service.loadReport(req.params.id);
     const buf = await pdfExport.buildReportPdfBuffer(document);
-    const name = pdfExport.suggestedPdfFilename(document);
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${name}"; filename*=UTF-8''${encodeURIComponent(name)}`
-    );
+    res.setHeader("Content-Disposition", asciiAttachmentDispositionForReport(document, ".pdf"));
     res.send(Buffer.from(buf));
   } catch (e) {
     sendError(res, e);

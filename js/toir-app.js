@@ -874,6 +874,15 @@
     const classCatalog = [...new Set(allRowsForClasses.map((r) => r.class))].sort();
     fillClassSelect(classSel, classCatalog, "__all__");
 
+    if (window.ToirReports && typeof window.ToirReports.init === "function") {
+      window.ToirReports.init({
+        getCurrentFilters: () => ({
+          period: periodSel?.value || "all",
+          class: classSel?.value || "__all__",
+        }),
+      });
+    }
+
     const allMonths = (data.charts.costsByMonth || []).map((m) => m.month);
     const drain = () => {
       const monthSet = monthSetFromPeriod(periodSel?.value || "all", allMonths);
@@ -1067,15 +1076,6 @@
 
     drain();
     applyTab("summary");
-
-    if (window.ToirReports && typeof window.ToirReports.init === "function") {
-      window.ToirReports.init({
-        getCurrentFilters: () => ({
-          period: periodSel?.value || "all",
-          class: classSel?.value || "__all__",
-        }),
-      });
-    }
 
     clearLegacyAiSidebarInlineStyles();
   }
@@ -1702,7 +1702,22 @@
         body: JSON.stringify({ question, filters: filters || {} }),
       });
       const json = await res.json().catch(() => null);
-      if (!res.ok || !json?.ok) return null;
+      if (!res.ok) {
+        const msg = String(json?.message || "").trim();
+        return {
+          ok: false,
+          errorMessage: msg || `Ошибка сервера агента (${res.status}).`,
+          errorCode: json?.errorCode || null,
+        };
+      }
+      if (!json?.ok) {
+        const msg = String(json?.message || "").trim();
+        return {
+          ok: false,
+          errorMessage: msg || "Запрос агента отклонён.",
+          errorCode: json?.errorCode || null,
+        };
+      }
       return json;
     } catch {
       return null;
@@ -1953,8 +1968,13 @@
             renderArtifacts(agentResult.artifacts, artifactsContainer);
           }
         } else {
+          const agentErr =
+            agentResult && agentResult.ok === false && agentResult.errorMessage
+              ? `<div class="agent-trace">${escapeHtml(agentResult.errorMessage)}</div>`
+              : "";
           const { fact, conclusion, action } = await askCloudLlm(q, assistantContext);
           pending.innerHTML =
+            agentErr +
             `<div class="block-title">Факт</div>${escapeHtml(fact)}` +
             `<div class="block-title" style="margin-top:8px">Вывод</div>${escapeHtml(conclusion)}` +
             `<div class="block-title" style="margin-top:8px">Действие</div>${escapeHtml(action)}` +

@@ -52,19 +52,33 @@ function buildPassportSection(factPack) {
   const snap = factPack.snapshot_summary || {};
   const k = factPack.kpis || {};
   const org = snap.organization || "организации";
-  const periodFull = snap.period_full || snap.period_label || "—";
+  /* В тексте паспорта показываем срез дашборда (period_label), а не meta.period выгрузки —
+     иначе при фильтре «1-е полугодие» в абзаце остаётся полный год из исходных файлов. */
+  const periodNarrative = snap.period_label || "—";
+  const sourceCoverage = (snap.period_full && String(snap.period_full).trim()) || "";
   const filesPhrase = sourceFilesPhrase(snap.source_name);
   const months = snap.months_count != null ? snap.months_count : 12;
+  const classFilter = snap.class_filter;
+  const classBrief =
+    classFilter && String(classFilter).trim() && classFilter !== "__all__"
+      ? String(classFilter).trim()
+      : "все классы";
+  const sourceSpanNote =
+    sourceCoverage && sourceCoverage !== periodNarrative
+      ? ` Объединённый набор исходных отчётов по календарю охватывает **${sourceCoverage}**; показатели в документе посчитаны для выбранного среза.`
+      : "";
   const body =
     `Отчёт охватывает деятельность по техническому обслуживанию и ремонту в **${org}** ` +
-    `за период **${periodFull}**. Анализ базируется на данных из ${filesPhrase}, ` +
-    `охватывающих **${fmtNum(k.equipment_count)} единиц** оборудования.`;
+    `за период **${periodNarrative}**. Анализ базируется на данных из ${filesPhrase}, ` +
+    `охватывающих **${fmtNum(k.equipment_count)} единиц** оборудования в выбранном срезе.` +
+    sourceSpanNote;
   return {
     section_id: "passport",
     title: "Паспорт отчёта и контекст среза",
     body_markdown: body,
     fact_bullets: [
       `Период: ${snap.period_label || "—"} (${months} мес.).`,
+      `Класс оборудования (срез): ${classBrief}.`,
       `Количество оборудования: ${fmtNum(k.equipment_count)} ед.`,
       `Общие затраты: ${fmtMoney(k.total_cost)} руб.`,
       `Суммарный простой: ${fmtHours(k.total_downtime_h)} ч.`,
@@ -78,9 +92,15 @@ function buildPassportSection(factPack) {
 
 function buildExecutiveSummarySection(factPack) {
   const k = factPack.kpis || {};
+  const snapSum = factPack.snapshot_summary || {};
   const k1 = findTriggered(factPack.diagnostics_summary, ["K1"])[0];
   const r18 = findTriggered(factPack.diagnostics_summary, ["R18"])[0];
   const k3 = findTriggered(factPack.diagnostics_summary, ["K3"])[0];
+
+  const classScopeLine =
+    snapSum.class_filter && snapSum.class_filter !== "__all__"
+      ? `Данное резюме относится к классу оборудования **«${String(snapSum.class_filter)}»** в выбранном периоде. `
+      : "";
 
   const ktgLine =
     k.avg_ktg !== null
@@ -109,7 +129,9 @@ function buildExecutiveSummarySection(factPack) {
     ? `Основные потери генерируются редкими, но дорогостоящими инцидентами (${r18.summary}) — требуется **риск-ориентированный** подход вместо фокуса только на числе ремонтов.`
     : "Имеет смысл проверить, не концентрируются ли потери в редких дорогостоящих случаях вопреки частоте отказов.";
 
-  const chunks = [ktgLine];
+  const chunks = [];
+  if (classScopeLine) chunks.push(classScopeLine.trim());
+  chunks.push(ktgLine);
   if (k1) chunks.push(k1.summary);
   chunks.push(mismatchLine, corrLine, r18Line);
   if (k3) chunks.push(k3.summary);
@@ -127,7 +149,7 @@ function buildExecutiveSummarySection(factPack) {
     factBullets.push(`Диагностика K3 (длительные ремонты): ${k3.summary}`);
   } else {
     const slow = (factPack.mttr_top || []).filter((r) => (r.mttr_h || 0) > 50).length;
-    if (slow) factBullets.push(`Объектов с СВВ выше 50 ч в топе: ${slow}.`);
+    if (slow) factBullets.push(`Объектов с СВР выше 50 ч в топе: ${slow}.`);
   }
 
   const evidenceRefs = ["kpis", "top_cost_objects", "top_problem_objects"];
@@ -242,10 +264,10 @@ function buildReliabilitySection(factPack) {
   const body =
     `Средний КТГ по парку — **${k.avg_ktg !== null ? k.avg_ktg + "%" : "н/д"}**, ` +
     `средний СННО — **${fmtHours(k.avg_mtbf_h)} ч**, ` +
-    `средний СВВ — **${fmtHours(k.avg_mttr_h)} ч**.\n\n` +
+    `средний СВР — **${fmtHours(k.avg_mttr_h)} ч**.\n\n` +
     `По причинам отказов лидируют: ${causesText}.\n\n` +
     `Самые ненадёжные объекты по СННО (наработка на отказ): ${mtbfText}.\n\n` +
-    `Самые медленные ремонты (СВВ): ${mttrText}.`;
+    `Самые медленные ремонты (СВР): ${mttrText}.`;
   const warnings = [];
   if (k1) warnings.push(`K1: ${k1.summary}`);
   if (k2) warnings.push(`K2: ${k2.summary}`);
@@ -254,12 +276,12 @@ function buildReliabilitySection(factPack) {
   if (r13) warnings.push(`R13: ${r13.summary}`);
   return {
     section_id: "reliability",
-    title: "Надёжность: КТГ, СННО, СВВ и причины отказов",
+    title: "Надёжность: КТГ, СННО, СВР и причины отказов",
     body_markdown: body,
     fact_bullets: [
       `Средний КТГ: ${k.avg_ktg !== null ? k.avg_ktg + "%" : "н/д"}.`,
       `Средний СННО: ${fmtHours(k.avg_mtbf_h)} ч.`,
-      `Средний СВВ: ${fmtHours(k.avg_mttr_h)} ч.`,
+      `Средний СВР: ${fmtHours(k.avg_mttr_h)} ч.`,
       `Топ-причина отказов: ${causes[0] ? causes[0].cause : "н/д"}.`,
     ],
     evidence_refs: [
@@ -287,9 +309,8 @@ function buildPersonnelSection(factPack) {
       section_id: "personnel",
       title: "Использование персонала",
       body_markdown:
-        `В текущем источнике toir.json нет данных по использованию персонала — ` +
-        `они подгружаются в дашборд из отдельных файлов (personnel_org_usage.json и др.) ` +
-        `и в фактовый пакет отчёта на этом этапе не попадают.\n\n` +
+        `В текущем источнике toir.json нет блоков personnelUsage / personnelOrgUsage — ` +
+        `они собираются тем же скриптом analyze_toir из отчётов «Использование персонала» и «Анализ использования персонала», если файлы лежат в data/.\n\n` +
         `Раздел оставлен в каталоге сознательно: его можно наполнить вручную, ` +
         `либо позже расширить facts.js, чтобы подтягивать сводку по подразделениям.`,
       fact_bullets: [
