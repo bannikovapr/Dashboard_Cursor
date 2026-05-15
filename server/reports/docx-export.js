@@ -6,6 +6,7 @@ const {
   Packer,
   Paragraph,
   TextRun,
+  ImageRun,
   HeadingLevel,
   AlignmentType,
   Table,
@@ -14,10 +15,17 @@ const {
   WidthType,
   ShadingType,
   BorderStyle,
+  VerticalAlign,
   convertInchesToTwip,
 } = require("docx");
 
 const { buildExportLayout, buildFactPackPresentation } = require(path.join(__dirname, "..", "..", "js", "report-export-layout.js"));
+const { readDashboardUserpicBuffer } = require("./brand-assets");
+
+function borderlessTableBorders() {
+  const b = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
+  return { top: b, bottom: b, left: b, right: b, insideHorizontal: b, insideVertical: b };
+}
 
 function safeFilenameBase(title) {
   const raw = String(title || "toir-report")
@@ -211,25 +219,88 @@ async function buildReportDocxBuffer(document_) {
 
   const children = [];
 
-  children.push(
-    new Paragraph({
-      text: layout.title,
-      heading: HeadingLevel.HEADING_1,
-      spacing: { after: 120 },
-    })
-  );
-  children.push(
-    new Paragraph({
-      spacing: { after: 100 },
-      children: [
-        new TextRun({
-          text: "Стратегический дашборд ТОиР · экспорт документа",
-          size: 22,
-          color: "64748B",
-        }),
-      ],
-    })
-  );
+  const logoBuf = readDashboardUserpicBuffer();
+  if (logoBuf) {
+    children.push(
+      new Table({
+        borders: borderlessTableBorders(),
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: [
+          new TableRow({
+            children: [
+              new TableCell({
+                width: { size: 16, type: WidthType.PERCENTAGE },
+                verticalAlign: VerticalAlign.CENTER,
+                margins: {
+                  top: convertInchesToTwip(0.04),
+                  bottom: convertInchesToTwip(0.04),
+                  left: 0,
+                  right: convertInchesToTwip(0.14),
+                },
+                children: [
+                  new Paragraph({
+                    children: [
+                      new ImageRun({
+                        data: logoBuf,
+                        transformation: { width: 52, height: 52 },
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+              new TableCell({
+                width: { size: 84, type: WidthType.PERCENTAGE },
+                verticalAlign: VerticalAlign.CENTER,
+                margins: {
+                  top: convertInchesToTwip(0.04),
+                  bottom: convertInchesToTwip(0.04),
+                  left: 0,
+                  right: 0,
+                },
+                children: [
+                  new Paragraph({
+                    text: layout.title,
+                    heading: HeadingLevel.HEADING_1,
+                    spacing: { after: 120 },
+                  }),
+                  new Paragraph({
+                    spacing: { after: 100 },
+                    children: [
+                      new TextRun({
+                        text: "Стратегический дашборд ТОиР · экспорт документа",
+                        size: 22,
+                        color: "64748B",
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      })
+    );
+  } else {
+    children.push(
+      new Paragraph({
+        text: layout.title,
+        heading: HeadingLevel.HEADING_1,
+        spacing: { after: 120 },
+      })
+    );
+    children.push(
+      new Paragraph({
+        spacing: { after: 100 },
+        children: [
+          new TextRun({
+            text: "Стратегический дашборд ТОиР · экспорт документа",
+            size: 22,
+            color: "64748B",
+          }),
+        ],
+      })
+    );
+  }
   children.push(
     new Paragraph({
       spacing: { after: 200 },

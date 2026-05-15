@@ -304,9 +304,10 @@ function executeCompute(params) {
     }
     case "rank": {
       if (!rows || !field) return { error: "Р”Р»СЏ rank РЅСѓР¶РЅС‹ dataset Рё field." };
-      const cap = Math.min(Number(limit) || 10, 50);
       const sorted = [...rows].sort((a, b) => (Number(b[field]) || 0) - (Number(a[field]) || 0));
-      return { rows: sorted.slice(0, cap), operation: "rank", field, limit: cap };
+      const lim = Number(limit);
+      const top = Number.isFinite(lim) && lim > 0 ? sorted.slice(0, lim) : sorted;
+      return { rows: top, operation: "rank", field, limit: top.length };
     }
     case "count": {
       if (!rows) return { error: "Р”Р»СЏ count РЅСѓР¶РµРЅ dataset." };
@@ -325,7 +326,7 @@ function executeCompute(params) {
       const result = [...groups.entries()]
         .map(([key, g]) => ({ [group_field]: key, sum: g.sum, count: g.count, avg: g.count ? g.sum / g.count : 0 }))
         .sort((a, b) => b.sum - a.sum);
-      return { rows: result.slice(0, 50), operation: "group_by", group_field, agg_field };
+      return { rows: result, operation: "group_by", group_field, agg_field };
     }
     default:
       return { error: `РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕРїРµСЂР°С†РёСЏ: ${operation}` };
@@ -339,8 +340,8 @@ function executeBuildTable(params) {
     artifact: {
       type: "table",
       title,
-      columns: columns.slice(0, 20),
-      rows: rows.slice(0, 200),
+      columns: Array.isArray(columns) ? columns : [],
+      rows: Array.isArray(rows) ? rows : [],
     },
   };
 }
@@ -355,11 +356,13 @@ function executeBuildChart(params) {
       type: "chart",
       title,
       chartType,
-      categories: categories.slice(0, 50),
-      series: series.map((s) => ({
-        name: s.name || "РЎРµСЂРёСЏ",
-        data: (s.data || []).slice(0, 50),
-      })),
+      categories: Array.isArray(categories) ? categories : [],
+      series: Array.isArray(series)
+        ? series.map((s) => ({
+            name: s.name || "РЎРµСЂРёСЏ",
+            data: Array.isArray(s.data) ? s.data : [],
+          }))
+        : [],
     },
   };
 }

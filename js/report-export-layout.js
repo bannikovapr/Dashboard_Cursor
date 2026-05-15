@@ -131,7 +131,7 @@
       },
       { k: "Средний КТГ, %", v: kpis.avg_ktg !== null && kpis.avg_ktg !== undefined ? String(kpis.avg_ktg) : "—" },
       { k: "Среднее СННО, ч", v: kpis.avg_mtbf_h != null && kpis.avg_mtbf_h !== undefined ? String(kpis.avg_mtbf_h) : "—" },
-      { k: "Среднее СВВ, ч", v: kpis.avg_mttr_h != null && kpis.avg_mttr_h !== undefined ? String(kpis.avg_mttr_h) : "—" },
+      { k: "Среднее СВР, ч", v: kpis.avg_mttr_h != null && kpis.avg_mttr_h !== undefined ? String(kpis.avg_mttr_h) : "—" },
     ];
 
     const monthly = (fp.monthly_trend || []).map((r) => ({

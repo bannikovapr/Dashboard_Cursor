@@ -57,7 +57,7 @@ description: Use this skill when the user needs TOIR analytics from 7 separate E
 ## Согласованность с фронтом (текущий макет)
 
 - KPI на странице: **8 карточек**, включая **СННО (MTBF, средний)**; подсветка значений **зелёный / жёлтый / красный** задаётся порогами на фронте (`toir-app.js`).
-- Вкладка **«Надёжность»**: причины отказов, КТГ по месяцам, **СННО топ**, **СВВ топ**.
+- Вкладка **«Надёжность»**: причины отказов, КТГ по месяцам, **СННО топ**, **СВР топ**.
 - Вкладка **«Затраты»** дополнительно использует структуру работ **труд/материалы по месяцам** (`charts.materialLaborByMonth`).
 - Вкладка **«Оборудование»**: структура парка, **износ** как изображение по `charts.wearImage`, затраты по классам.
 - В шапке дашборда: **логотип + название в одну строку**, ниже строка контекста, ниже фильтры (период/класс) и табы в этом же блоке.
@@ -67,7 +67,7 @@ description: Use this skill when the user needs TOIR analytics from 7 separate E
 Для корректных ответов ассистента должны стабильно формироваться:
 
 - `charts.mtbfByEquipment` (`equipment`, `mtbf_h`) — вопросы по СННО.
-- `charts.mttrByEquipment` (`equipment`, `mttr_h`) — вопросы по СВВ.
+- `charts.mttrByEquipment` (`equipment`, `mttr_h`) — вопросы по СВР.
 - `charts.materialLaborByMonth` (`month`, `material_h/material`, `labor_h/labor`) — вопросы по труд/материалы.
 - `tables.equipmentCosts` (включая `total` и `months`) — топ/детализация затрат.
 - `charts.costsByMonth` и `charts.failureCauses/failure_causes` — сравнения месяцев и причины отказов.

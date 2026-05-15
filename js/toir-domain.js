@@ -32,6 +32,18 @@
     return "Прочее";
   }
 
+  function equipmentClassFromRaw(raw, name) {
+    if (!name) return "Прочее";
+    const nm = String(name);
+    if (nm === "Итого") return classifyClass(nm);
+    const map = raw && raw.tables && raw.tables.equipmentClassByName;
+    if (map && typeof map === "object" && Object.prototype.hasOwnProperty.call(map, nm)) {
+      const v = map[nm];
+      if (v != null && String(v).trim()) return String(v).trim();
+    }
+    return classifyClass(nm);
+  }
+
   function orderedMonthLabelsFromRaw(raw) {
     const rows = (raw && raw.charts && raw.charts.costsByMonth) || [];
     const keys = rows.map((r) => r && r.month).filter(Boolean);
@@ -91,6 +103,7 @@
 
   return {
     classifyClass,
+    equipmentClassFromRaw,
     orderedMonthLabelsFromRaw,
     monthSetForPeriod,
     periodPresetLabel,

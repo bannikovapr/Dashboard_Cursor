@@ -5,6 +5,7 @@ const pdfMake = require("pdfmake/build/pdfmake");
 const pdfVfs = require("pdfmake/build/vfs_fonts");
 
 const { buildExportLayout, buildFactPackPresentation } = require(path.join(__dirname, "..", "..", "js", "report-export-layout.js"));
+const { readDashboardUserpicBuffer, toPngDataUri } = require("./brand-assets");
 
 let vfsInited = false;
 function ensurePdfFonts() {
@@ -116,12 +117,37 @@ async function buildReportPdfBuffer(document_) {
 
   const content = [];
 
-  content.push({ text: L.title, style: "title" });
-  content.push({
-    text: "Стратегический дашборд ТОиР · экспорт документа",
-    style: "tagline",
-    margin: [0, 0, 0, 10],
-  });
+  const logoUri = toPngDataUri(readDashboardUserpicBuffer());
+  if (logoUri) {
+    content.push({
+      columnGap: 16,
+      columns: [
+        {
+          width: 68,
+          stack: [{ image: logoUri, fit: [52, 52], alignment: "center", margin: [0, 2, 0, 2] }],
+        },
+        {
+          width: "*",
+          stack: [
+            { text: L.title, style: "title" },
+            {
+              text: "Стратегический дашборд ТОиР · экспорт документа",
+              style: "tagline",
+              margin: [0, 4, 0, 0],
+            },
+          ],
+        },
+      ],
+      margin: [0, 0, 0, 10],
+    });
+  } else {
+    content.push({ text: L.title, style: "title" });
+    content.push({
+      text: "Стратегический дашборд ТОиР · экспорт документа",
+      style: "tagline",
+      margin: [0, 0, 0, 10],
+    });
+  }
   content.push({
     text: [
       { text: `Период: ${L.snapshot.periodLabel}`, color: "#0f172a" },

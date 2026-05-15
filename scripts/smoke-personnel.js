@@ -192,8 +192,14 @@ function run() {
   };
 
   const toirData = readJson("data/toir.json");
-  const personnelData = readJson("data/personnel_dlp_test.json");
-  const personnelOrgData = readJson("data/personnel_org_usage.json");
+  const personnelData = toirData.personnelUsage || null;
+  const personnelOrgData = toirData.personnelOrgUsage || null;
+  if (!personnelData?.table?.rows?.length) {
+    fail("toir.json: нет personnelUsage.table.rows (нужен отчёт «Использование персонала» и пересборка analyze_toir)");
+  }
+  if (!personnelOrgData?.table?.rows?.length) {
+    fail("toir.json: нет personnelOrgUsage.table.rows (нужен отчёт «Анализ использования персонала» и пересборка analyze_toir)");
+  }
 
   const intentResults = assertIntentCases(appFns.detectIntentFromQuestion);
   const titles = assertNoDlpTitles(personnelData);

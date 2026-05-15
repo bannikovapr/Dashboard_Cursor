@@ -6,8 +6,6 @@ const path = require("path");
 const PROJECT_ROOT = path.resolve(__dirname, "../../..");
 
 const TERM_SOURCES = Object.freeze({
-  personnel: "data/personnel_dlp_test.json",
-  org: "data/personnel_org_usage.json",
   toir: "data/toir.json",
 });
 
@@ -74,7 +72,9 @@ function buildState() {
   const organizations = new Set();
   const departments = new Set();
 
-  const personnel = readJsonSafely(path.resolve(PROJECT_ROOT, TERM_SOURCES.personnel));
+  const toir = readJsonSafely(path.resolve(PROJECT_ROOT, TERM_SOURCES.toir));
+
+  const personnel = toir?.personnelUsage;
   if (personnel?.table?.rows) {
     for (const row of personnel.table.rows) {
       if (row?.employee) {
@@ -84,7 +84,7 @@ function buildState() {
     }
   }
 
-  const org = readJsonSafely(path.resolve(PROJECT_ROOT, TERM_SOURCES.org));
+  const org = toir?.personnelOrgUsage;
   const harvestRows = (rows) => {
     if (!Array.isArray(rows)) return;
     for (const row of rows) {
@@ -106,9 +106,7 @@ function buildState() {
   if (Array.isArray(org?.organizations)) harvestRows(org.organizations);
   if (Array.isArray(org?.departments)) harvestRows(org.departments);
 
-  // toir.json equipment names are kept generic by design; codes are caught by regex layer.
-  // We still allow domain dictionary to learn explicit "installation"/"location" entries if present.
-  const toir = readJsonSafely(path.resolve(PROJECT_ROOT, TERM_SOURCES.toir));
+  // Оборудование / локации в toir (если есть).
   if (Array.isArray(toir?.installations)) {
     for (const inst of toir.installations) {
       if (inst?.name) addTerm(terms, inst.name, "dictionary_installation");

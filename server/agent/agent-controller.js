@@ -9,12 +9,12 @@ const MAX_STEPS = 5;
 const AGENT_TIMEOUT_MS = 90000;
 const STEP_TIMEOUT_MS = 45000;
 const FORMAT_REPAIR_PROMPT =
-  "���������� ����� �� ������������� ���������� �������. " +
-  "����� ������ �������� JSON ��� markdown. " +
-  "��������� ������ ��� �������: " +
+  "Исправь формат последнего ответа ассистента. " +
+  "Нужен строго валидный JSON без markdown. " +
+  "Допустимые форматы: " +
   "{\"thinking\":\"...\",\"tool_calls\":[{\"tool\":\"name\",\"params\":{}}]} " +
-  "��� {\"answer\":{\"fact\":\"...\",\"conclusion\":\"...\",\"action\":\"...\"},\"artifacts\":[]}. " +
-  "���� ������ ��� �������, ����� ��������� answer.";
+  "или {\"answer\":{\"fact\":\"...\",\"conclusion\":\"...\",\"action\":\"...\"},\"artifacts\":[]}. " +
+  "Если данных уже достаточно — верни answer.";
 
 function getModelChain() {
   const primary = process.env.OPENROUTER_MODEL || "google/gemma-4-31b-it:free";
@@ -132,35 +132,22 @@ function censorToolResultForModel(tr) {
   if (!tr || typeof tr !== "object") return tr;
   if (tr.tool !== "query_data") return tr;
 
-  const params = tr.params || {};
   const result = tr.result || {};
   const rows = Array.isArray(result.rows) ? result.rows : [];
-  const hasWhere = Boolean(params.where && typeof params.where === "object" && Object.keys(params.where).length > 0);
   const totalBeforeLimit = Number.isFinite(result.totalBeforeLimit) ? result.totalBeforeLimit : rows.length;
-  const hasLargeDataset = totalBeforeLimit > 50 || rows.length > 50;
-  const shouldRedactRows = !hasWhere || hasLargeDataset;
-
   const summary = {
     rowsCount: rows.length,
     totalBeforeLimit,
-    columns: rows[0] && typeof rows[0] === "object" ? Object.keys(rows[0]).slice(0, 30) : [],
-    redaction: shouldRedactRows
-      ? (!hasWhere ? "rows_redacted_unfiltered_query" : "rows_redacted_large_result")
-      : "none",
+    columns: rows[0] && typeof rows[0] === "object" ? Object.keys(rows[0]) : [],
+    redaction: "none",
   };
   return {
     ...tr,
-    result: shouldRedactRows
-      ? {
-          ...result,
-          rows: [],
-          summary,
-        }
-      : {
-          ...result,
-          rows: summarizeRowsForModel(rows, 20),
-          summary,
-        },
+    result: {
+      ...result,
+      rows: summarizeRowsForModel(rows, rows.length),
+      summary,
+    },
   };
 }
 
@@ -193,7 +180,7 @@ function buildUserTableArtifactFromToolResults(toolResults) {
   const hasPlan = rows.some((r) => r && typeof r === "object" && Object.prototype.hasOwnProperty.call(r, "plan_h"));
   if (!hasEmployee || !hasFact || !hasPlan) return null;
 
-  const viewRows = rows.slice(0, 50).map((r) => {
+  const viewRows = rows.map((r) => {
     const plan = Number(r?.plan_h);
     const fact = Number(r?.fact_h);
     const utilization =
@@ -208,12 +195,12 @@ function buildUserTableArtifactFromToolResults(toolResults) {
 
   return {
     type: "table",
-    title: "������������ ����������� (����/����)",
+    title: "Использование персонала (факт/план)",
     columns: [
-      { key: "employee", label: "���������" },
-      { key: "fact_h", label: "���� (�)" },
-      { key: "plan_h", label: "���� (�)" },
-      { key: "utilization_pct", label: "���������� (%)" },
+      { key: "employee", label: "Сотрудник" },
+      { key: "fact_h", label: "Факт (ч)" },
+      { key: "plan_h", label: "План (ч)" },
+      { key: "utilization_pct", label: "Исполнение (%)" },
     ],
     rows: viewRows,
   };
@@ -244,9 +231,12 @@ function buildSafeAggregateAnswerFromToolResults(toolResults) {
 
   if (rows.length === 0) {
     return {
-      fact: "������������ ������ ��� ����������� ������: ��������� ������ ���� ������ ��������� DLP.",
-      conclusion: "���������� ��������� ����������� ������ ��� ������� ��� ��������� �������������� ������.",
-      action: "�������� ������ � ���������� �������� (��������, �� ������������� ��� �����������) ���� ����������� �������������� ����������.",
+      fact:
+        "Строк с данными персонала нет в этом ответе: возможные причины — ограничения фильтра или политики DLP.",
+      conclusion:
+        "Нельзя построить корректную сводку без строк или без расширения разрешённого набора данных.",
+      action:
+        "Уточните фильтры и параметры запроса (период, подразделение, сотрудник) или запросите допустимый для политики объём данных.",
     };
   }
 
@@ -256,14 +246,15 @@ function buildSafeAggregateAnswerFromToolResults(toolResults) {
 
   return {
     fact:
-      `��������� ������ �� ����������� ������ ��������� DLP. ` +
-      `�������� ���������� ������: ������� ${rows.length}, ��������� ���� ${totalFact.toFixed(2)} �, ` +
-      `��������� ���� ${totalPlan.toFixed(2)} �.`,
+      `Агрегированная сводка по персоналу с учётом ограничений DLP. ` +
+      `Кратко по доступным строкам: строк ${rows.length}, сумма факта ${totalFact.toFixed(2)} ч, ` +
+      `сумма плана ${totalPlan.toFixed(2)} ч.`,
     conclusion:
       utilizationPct == null
-        ? "���������� ��������� ������� ����������, ��� ��� �������� ���� �����������."
-        : `������������ ���������� ����� ���������� ${utilizationPct.toFixed(2)}%.`,
-    action: "����� �������� ������������ ������, ������� ������ �� ����������� ����������/�������������/�����������.",
+        ? "Нельзя посчитать исполнение — нет корректных значений плана."
+        : `Исполнение плана по факту ${utilizationPct.toFixed(2)}%.`,
+    action:
+      "Для детализации откройте расширенный отчёт по персоналу или уточните фильтры по подразделению/классу/периоду.",
   };
 }
 
@@ -325,15 +316,43 @@ function collectForecastTrace(allToolResults) {
   return null;
 }
 
-function fallbackAnswer() {
-  return {
-    answer: {
-      fact: "�������, �� ���� �� ���� �������� �� ��� ������.",
-      conclusion: "����� �� ���� �������� ���������� ����� �� ������ �� ���������� ����� �����.",
-      action: "���������� ����������������� ������ ��� ������������� � ����� �������� ������.",
-    },
-    artifacts: [],
-  };
+function agentFailureMessage(failureReason) {
+  const fr = String(failureReason || "");
+  const prov = /^provider_error_(\d+|unknown)$/.exec(fr);
+  if (prov) {
+    const code = prov[1];
+    if (code === "404") {
+      return "Провайдер моделей вернул 404: указанная модель не найдена или недоступна. Проверьте OPENROUTER_MODEL и OPENROUTER_FALLBACK_MODEL в файле .env на сервере.";
+    }
+    if (code === "401" || code === "403") {
+      return "Провайдер отклонил запрос (ключ или доступ). Проверьте OPENROUTER_API_KEY и права доступа к выбранным моделям.";
+    }
+    if (code === "429") {
+      return "Превышен лимит запросов к провайдеру (429). Подождите немного и повторите попытку.";
+    }
+    if (code === "408") {
+      return "Истекло время ожидания ответа от модели. Повторите запрос или смените модель в настройках сервера.";
+    }
+    return `Запрос к модели завершился ошибкой (HTTP ${code}). Попробуйте позже или проверьте конфигурацию API.`;
+  }
+  if (fr === "agent_timeout") {
+    return "Истекло общее время работы агента. Упростите вопрос или повторите запрос.";
+  }
+  if (fr === "invalid_json_from_model") {
+    return "Модель вернула ответ в неверном формате (не удалось разобрать JSON). Повторите запрос или смените модель.";
+  }
+  if (fr === "invalid_final_schema") {
+    return "Модель вернула JSON без ожидаемых полей финального ответа. Переформулируйте вопрос или повторите запрос.";
+  }
+  if (fr === "max_steps_exceeded") {
+    return "Достигнут лимит шагов агента без финального ответа. Уточните вопрос или разбейте задачу на части.";
+  }
+  return "Агент не смог подготовить ответ. Попробуйте режим «Быстрый ответ» или повторите запрос позже.";
+}
+
+function agentFailureErrorCode(failureReason) {
+  const fr = String(failureReason || "");
+  return fr.startsWith("provider_error_") ? "provider_error" : "agent_failed";
 }
 
 function isValidFinalAnswer(parsed) {
@@ -374,7 +393,7 @@ async function runAgent({ question, filters, requestId, dlpSession, modelTraceHo
       ok: false,
       requestId,
       errorCode: "provider_not_configured",
-      message: "API-���� OpenRouter �� �������� �� �������.",
+      message: "API-ключ OpenRouter не задан на сервере.",
       trace: { ...createTrace(), failureReason: "provider_not_configured" },
     };
   }
@@ -467,7 +486,7 @@ async function runAgent({ question, filters, requestId, dlpSession, modelTraceHo
           ok: false,
           requestId,
           errorCode: "dlp_blocked",
-          message: "���������� ������������ �������� ������� � ������������� ��������� DLP.",
+          message: "Результаты инструментов содержат данные, заблокированные политикой DLP.",
           trace: { ...trace, failureReason: "dlp_blocked_tool_results" },
         };
       }
@@ -480,10 +499,10 @@ async function runAgent({ question, filters, requestId, dlpSession, modelTraceHo
         const tableArtifact = buildUserTableArtifactFromToolResults(toolResults);
         const fallbackAnswer = tableArtifact
           ? {
-              fact: "�� ������ �������� ����������� ������ ����������� � ������ � ������ �����������.",
+              fact: "По этому запросу строки результата недоступны в объёме, переданном модели.",
               conclusion:
-                "��������� ������ �������� ������������; � ������ ��������� ������������ ������ �� ������������.",
-              action: "��� ������� ������� ������� ������ �� ����������, ������������� ��� �����������.",
+                "Ответ построен без полной выборки; ниже дана агрегированная сводка или таблица по доступным данным.",
+              action: "При необходимости уточните фильтры (период, класс, подразделение) или разверните таблицу.",
             }
           : buildSafeAggregateAnswerFromToolResults(toolResults);
         return {
@@ -534,11 +553,11 @@ async function runAgent({ question, filters, requestId, dlpSession, modelTraceHo
   if (!trace.failureReason) {
     trace.failureReason = trace.steps >= MAX_STEPS ? "max_steps_exceeded" : "agent_stopped_without_answer";
   }
-  const fb = fallbackAnswer();
   return {
-    ok: true,
+    ok: false,
     requestId,
-    ...fb,
+    errorCode: agentFailureErrorCode(trace.failureReason),
+    message: agentFailureMessage(trace.failureReason),
     trace,
   };
 }

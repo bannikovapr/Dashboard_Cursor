@@ -4,8 +4,6 @@ const fs = require("fs");
 const path = require("path");
 
 const DATA_PATH = path.resolve(__dirname, "../../data/toir.json");
-const PERSONNEL_DATA_PATH = path.resolve(__dirname, "../../data/personnel_dlp_test.json");
-const PERSONNEL_ORG_DATA_PATH = path.resolve(__dirname, "../../data/personnel_org_usage.json");
 
 let _raw = null;
 let _datasets = null;
@@ -39,6 +37,17 @@ function classifyClass(name) {
   return "РџСЂРѕС‡РµРµ";
 }
 
+function resolveEquipmentClass(raw, name) {
+  if (name == null || name === "") return classifyClass(name);
+  const nm = String(name);
+  const map = raw && raw.tables && raw.tables.equipmentClassByName;
+  if (map && typeof map === "object" && Object.prototype.hasOwnProperty.call(map, nm)) {
+    const v = map[nm];
+    if (v != null && String(v).trim()) return String(v).trim();
+  }
+  return classifyClass(nm);
+}
+
 function loadRaw() {
   if (_raw) return _raw;
   const text = fs.readFileSync(DATA_PATH, "utf-8");
@@ -48,34 +57,26 @@ function loadRaw() {
 
 function loadPersonnelRaw() {
   if (_personnelRaw !== undefined) return _personnelRaw;
-  if (!fs.existsSync(PERSONNEL_DATA_PATH)) {
-    _personnelRaw = null;
-    return _personnelRaw;
-  }
   try {
-    const text = fs.readFileSync(PERSONNEL_DATA_PATH, "utf-8");
-    const parsed = JSON.parse(text);
-    _personnelRaw = parsed && typeof parsed === "object" ? parsed : null;
+    const raw = loadRaw();
+    const p = raw.personnelUsage;
+    _personnelRaw = p && typeof p === "object" ? p : null;
   } catch (e) {
     _personnelRaw = null;
-    console.warn(`[agent:data-store] Failed to load personnel_dlp_test.json: ${String(e?.message || e).slice(0, 300)}`);
+    console.warn(`[agent:data-store] personnelUsage from toir.json: ${String(e?.message || e).slice(0, 300)}`);
   }
   return _personnelRaw;
 }
 
 function loadPersonnelOrgRaw() {
   if (_personnelOrgRaw !== undefined) return _personnelOrgRaw;
-  if (!fs.existsSync(PERSONNEL_ORG_DATA_PATH)) {
-    _personnelOrgRaw = null;
-    return _personnelOrgRaw;
-  }
   try {
-    const text = fs.readFileSync(PERSONNEL_ORG_DATA_PATH, "utf-8");
-    const parsed = JSON.parse(text);
-    _personnelOrgRaw = parsed && typeof parsed === "object" ? parsed : null;
+    const raw = loadRaw();
+    const p = raw.personnelOrgUsage;
+    _personnelOrgRaw = p && typeof p === "object" ? p : null;
   } catch (e) {
     _personnelOrgRaw = null;
-    console.warn(`[agent:data-store] Failed to load personnel_org_usage.json: ${String(e?.message || e).slice(0, 300)}`);
+    console.warn(`[agent:data-store] personnelOrgUsage from toir.json: ${String(e?.message || e).slice(0, 300)}`);
   }
   return _personnelOrgRaw;
 }
@@ -114,7 +115,7 @@ function buildDatasets(raw) {
   const eqCosts = raw.tables?.equipmentCosts || {};
   ds.equipment_costs = Object.entries(eqCosts).map(([name, info]) => ({
     name,
-    class: classifyClass(name),
+    class: resolveEquipmentClass(raw, name),
     total: Number(info?.total || 0),
     months: info?.months || {},
   }));
@@ -122,7 +123,7 @@ function buildDatasets(raw) {
   const ktgMap = raw.tables?.ktg || {};
   ds.ktg = Object.entries(ktgMap).map(([name, info]) => ({
     name,
-    class: classifyClass(name),
+    class: resolveEquipmentClass(raw, name),
     avg_ktg: Number(info?.avg_ktg || 0),
     total_downtime_h: Number(info?.total_downtime_h || 0),
     monthly_ktg: info?.monthly_ktg || {},
@@ -133,7 +134,7 @@ function buildDatasets(raw) {
     .filter(([name]) => name !== "РС‚РѕРіРѕ")
     .map(([name, count]) => ({
       name,
-      class: classifyClass(name),
+      class: resolveEquipmentClass(raw, name),
       count: Number(count) || 0,
     }));
 
@@ -191,7 +192,7 @@ const DATASET_SCHEMA = {
   failure_causes: { fields: ["cause", "count"], description: "Причины отказов и их количество" },
   material_labor: { fields: ["month", "material_h", "labor_h"], description: "Структура работ по месяцам (часы материалов и труда)" },
   mtbf: { fields: ["equipment", "mtbf_h"], description: "СННО (наработка на отказ) по оборудованию, часы" },
-  mttr: { fields: ["equipment", "mttr_h"], description: "СВВ (среднее время восстановления) по оборудованию, часы" },
+  mttr: { fields: ["equipment", "mttr_h"], description: "СВР (среднее время восстановления) по оборудованию, часы" },
   equipment_costs: { fields: ["name", "class", "total", "months"], description: "Затраты по единицам оборудования с помесячной разбивкой" },
   ktg: { fields: ["name", "class", "avg_ktg", "total_downtime_h", "monthly_ktg"], description: "КТГ (коэффициент технической готовности) по оборудованию" },
   defects: { fields: ["name", "class", "count"], description: "Количество дефектов/отказов по оборудованию" },
@@ -293,8 +294,9 @@ function queryDataset(datasetName, { where, select, orderBy, limit } = {}) {
     });
   }
 
-  const cap = Math.min(Number(limit) || 1000, 1000);
-  result = result.slice(0, cap);
+  if (Number.isFinite(Number(limit)) && Number(limit) > 0) {
+    result = result.slice(0, Number(limit));
+  }
 
   if (select) result = result.map((r) => applySelect(r, select));
 
@@ -334,7 +336,7 @@ function searchEquipment(query) {
       }
     }
   }
-  return { rows: results.slice(0, 50) };
+  return { rows: results };
 }
 
 function parseRuMonthLabel(label) {
@@ -385,7 +387,7 @@ function buildCostsSeriesByClass(raw, classFilter) {
   const costs = raw.tables?.equipmentCosts || {};
   const monthMap = {};
   for (const [name, info] of Object.entries(costs)) {
-    const cls = classifyClass(name);
+    const cls = resolveEquipmentClass(raw, name);
     if (classFilter && classFilter !== "__all__" && cls !== classFilter) continue;
     const months = info?.months || {};
     for (const [monthLabel, value] of Object.entries(months)) {
@@ -470,6 +472,7 @@ module.exports = {
   sortRuMonthLabels,
   monthLabelToTs,
   classifyClass,
+  resolveEquipmentClass,
   reload,
 };
 

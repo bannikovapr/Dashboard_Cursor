@@ -6,17 +6,47 @@
     timeoutMs: 45000,
   };
 
+  let assistantContextLive = null;
+  /** Устанавливается внутри wireUi после первой инициализации. */
+  let applyFreshDashboardData = null;
+
+  function getDashboardApiOrigin() {
+    try {
+      const u = new URL(window.TOIR_API_URL || "http://localhost:8787/api/chat");
+      return u.origin;
+    } catch (e) {
+      return "http://localhost:8787";
+    }
+  }
+
   function classifyClass(name) {
-    if (/станок|токарн|фрезер|сверлил|шлиф|пресс|долб|заточ|расточ|протяж|электроэрозион|ленточнопиль|форматно|кромкооблицов|рейсмус|фуговальн|зубофрезерн|токарно-карусельн|продольно-фрезерн|листогибочн|гильотин/i.test(name))
+    if (!name) return "Прочее";
+    const s = String(name);
+    if (
+      /станок|токарн|фрезер|сверлил|шлиф|пресс|долб|заточ|расточ|протяж|электроэрозион|ленточнопиль|форматно|кромкооблицов|рейсмус|фуговальн|зубофрезерн|токарно-карусельн|продольно-фрезерн|листогибочн|гильотин/i.test(s)
+    )
       return "Станки и металлообработка";
-    if (/насос/i.test(name)) return "Насосы";
-    if (/компрессор/i.test(name)) return "Компрессоры";
-    if (/кран|тельфер|\bталь\b/i.test(name)) return "Крановое оборудование";
-    if (/погрузчик|экскаватор|самосвал|бульдозер|тягач/i.test(name)) return "Самоходная техника";
-    if (/трансформатор|электродвигатель|генератор|вентилятор/i.test(name)) return "Электрооборудование";
-    if (/робот|сварочн/i.test(name)) return "Сварка и роботы";
-    if (/конвейер|грохот|дробилк|мельниц|центрифуг|котёл|холодильн|гидропресс/i.test(name)) return "Прочее промышленное";
+    if (/насос/i.test(s)) return "Насосы";
+    if (/компрессор/i.test(s)) return "Компрессоры";
+    if (/кран|тельфер|\bталь\b/i.test(s)) return "Крановое оборудование";
+    if (/погрузчик|экскаватор|самосвал|бульдозер|тягач/i.test(s)) return "Самоходная техника";
+    if (/трансформатор|электродвигатель|генератор|вентилятор/i.test(s)) return "Электрооборудование";
+    if (/робот|сварочн/i.test(s)) return "Сварка и роботы";
+    if (/конвейер|грохот|дробилк|мельниц|центрифуг|котёл|холодильн|гидропресс/i.test(s)) return "Прочее промышленное";
     return "Прочее";
+  }
+
+  /** Класс из отчёта «Список оборудования» (tables.equipmentClassByName), иначе эвристика classifyClass. */
+  function equipmentClassFromData(data, name) {
+    if (name == null) return "Прочее";
+    const nm = String(name);
+    if (nm === "Итого") return classifyClass(nm);
+    const map = data && data.tables && data.tables.equipmentClassByName;
+    if (map && typeof map === "object" && Object.prototype.hasOwnProperty.call(map, nm)) {
+      const v = map[nm];
+      if (v != null && String(v).trim()) return String(v).trim();
+    }
+    return classifyClass(nm);
   }
 
   function shortMonthLabel(full) {
@@ -38,7 +68,7 @@
     const defects = data.tables.equipmentDefects || {};
     const rows = [];
     for (const [name, info] of Object.entries(costs)) {
-      const cls = classifyClass(name);
+      const cls = equipmentClassFromData(data, name);
       if (classNameFilter && classNameFilter !== "__all__" && cls !== classNameFilter) continue;
       let costInPeriod = 0;
       const months = info.months || {};
@@ -109,7 +139,7 @@
       const mk = row.month;
       let sum = 0;
       for (const [name, info] of Object.entries(costs)) {
-        if (classifyClass(name) !== classFilter) continue;
+        if (equipmentClassFromData(data, name) !== classFilter) continue;
         const v = info.months && info.months[mk];
         if (v) sum += v;
       }
@@ -829,7 +859,13 @@
     if (layoutEl) layoutEl.dataset.activeTab = name;
   }
 
-  function wireUi(data) {
+  function wireUi(initialData) {
+    let liveData = initialData;
+    let allMonths = (liveData.charts && liveData.charts.costsByMonth ? liveData.charts.costsByMonth : []).map(
+      (m) => m.month
+    );
+    let classCatalog = [];
+
     const periodSel = document.getElementById("panelPeriod");
     const classSel = document.getElementById("panelClass");
     let resizeTimer = null;
@@ -844,6 +880,25 @@
     /* Высота AI-панели задаётся в CSS (--ai-sidebar-height), без привязки к графикам/вкладкам. */
     function clearLegacyAiSidebarInlineStyles() {
       resetAiSidebarSizing(document.querySelector(".layout-sidebar"));
+    }
+
+    function refreshClassOptionsFromLiveData() {
+      const monthsAll = (liveData.charts && liveData.charts.costsByMonth ? liveData.charts.costsByMonth : []).map(
+        (m) => m.month
+      );
+      const allRowsForClasses = buildEquipmentRows(liveData, monthSetFromPeriod("all", monthsAll), "__all__");
+      const fromRows = allRowsForClasses.map((r) => r.class);
+      const map = liveData.tables && liveData.tables.equipmentClassByName;
+      const fromReport =
+        map && typeof map === "object"
+          ? Object.values(map)
+              .map((v) => String(v || "").trim())
+              .filter(Boolean)
+          : [];
+      classCatalog = [...new Set([...fromRows, ...fromReport])].sort();
+      const prev = classSel?.value || "__all__";
+      const preferred = prev !== "__all__" && classCatalog.includes(prev) ? prev : "__all__";
+      fillClassSelect(classSel, classCatalog, preferred);
     }
 
     document.querySelectorAll(".tab").forEach((btn) => {
@@ -866,13 +921,7 @@
       }, 120);
     });
 
-    const allRowsForClasses = buildEquipmentRows(
-      data,
-      monthSetFromPeriod("all", (data.charts.costsByMonth || []).map((m) => m.month)),
-      "__all__"
-    );
-    const classCatalog = [...new Set(allRowsForClasses.map((r) => r.class))].sort();
-    fillClassSelect(classSel, classCatalog, "__all__");
+    refreshClassOptionsFromLiveData();
 
     if (window.ToirReports && typeof window.ToirReports.init === "function") {
       window.ToirReports.init({
@@ -883,12 +932,11 @@
       });
     }
 
-    const allMonths = (data.charts.costsByMonth || []).map((m) => m.month);
     const drain = () => {
       const monthSet = monthSetFromPeriod(periodSel?.value || "all", allMonths);
       const cls = classSel?.value || "__all__";
-      const rows = buildEquipmentRows(data, monthSet, cls);
-      updateHeaderChips(data, periodSel?.value || "all", cls, rows);
+      const rows = buildEquipmentRows(liveData, monthSet, cls);
+      updateHeaderChips(liveData, periodSel?.value || "all", cls, rows);
       const agg = aggregateClasses(rows);
       const totalEq = agg.reduce((s, a) => s + a.qty, 0) || 1;
       const cats = agg.map((a) => a.class);
@@ -897,13 +945,15 @@
       Charts.renderStructureByClass(cats, structPct, "#chartStructure", 260);
       Charts.renderStructureByClass(cats, structPct, "#chartStructureEq", 260);
 
-      const cm = (data.charts.costsByMonth || []).filter((m) => monthSet.has(m.month));
-      const costsMln = monthlyCostsSeriesMln(data, cm, cls);
+      const cm = ((liveData.charts && liveData.charts.costsByMonth) || []).filter((m) => monthSet.has(m.month));
+      const costsMln = monthlyCostsSeriesMln(liveData, cm, cls);
       const monthLbl = cm.map((m) => shortMonthLabel(m.month));
       Charts.renderCostsByMonth(monthLbl, costsMln, "#chartCosts", 320);
       Charts.renderCostsByMonth(monthLbl, costsMln, "#chartCostsTab", 260);
 
-      const fc = [...(data.charts.failure_causes || data.charts.failureCauses || [])].sort((a, b) => b.count - a.count);
+      const fc = [...((liveData.charts && (liveData.charts.failure_causes || liveData.charts.failureCauses)) || [])].sort(
+        (a, b) => b.count - a.count
+      );
       const fcLabels = fc.map((x) => x.cause);
       const fcCounts = fc.map((x) => x.count);
       Charts.renderFailureCauses(fcLabels, fcCounts, "#chartCauses", 260);
@@ -928,10 +978,9 @@
         280
       );
 
-
       const ktgMonthlyMap = new Map();
       rows.forEach((r) => {
-        const k = (data.tables.ktg || {})[r.name];
+        const k = (liveData.tables.ktg || {})[r.name];
         const monthly = k?.monthly_ktg || {};
         Object.entries(monthly).forEach(([month, val]) => {
           if (!monthSet.has(month)) return;
@@ -952,8 +1001,8 @@
         260
       );
 
-      const mtbfTop = (data.charts.mtbfByEquipment || [])
-        .filter((x) => cls === "__all__" || classifyClass(x.equipment) === cls)
+      const mtbfTop = ((liveData.charts && liveData.charts.mtbfByEquipment) || [])
+        .filter((x) => cls === "__all__" || equipmentClassFromData(liveData, x.equipment) === cls)
         .slice(0, 10);
       Charts.renderMtbfTop(
         mtbfTop.map((x) => x.equipment),
@@ -961,8 +1010,8 @@
         "#chartMtbfTop",
         260
       );
-      const mttrTop = (data.charts.mttrByEquipment || [])
-        .filter((x) => cls === "__all__" || classifyClass(x.equipment) === cls)
+      const mttrTop = ((liveData.charts && liveData.charts.mttrByEquipment) || [])
+        .filter((x) => cls === "__all__" || equipmentClassFromData(liveData, x.equipment) === cls)
         .slice(0, 10);
       Charts.renderMttrTop(
         mttrTop.map((x) => x.equipment),
@@ -970,7 +1019,9 @@
         "#chartMttrTop",
         260
       );
-      const mlRows = (data.charts.materialLaborByMonth || []).filter((m) => monthSet.has(m.month));
+      const mlRows = ((liveData.charts && liveData.charts.materialLaborByMonth) || []).filter((m) =>
+        monthSet.has(m.month)
+      );
       Charts.renderMaterialLaborStacked(
         mlRows.map((m) => shortMonthLabel(m.month)),
         mlRows.map((m) => Number(m.material_h || m.material || 0)),
@@ -987,7 +1038,7 @@
       );
 
       const monthShort = cm.map((m) => m.month);
-      renderKpis(rows, data, monthShort);
+      renderKpis(rows, liveData, monthShort);
 
       const structSub = document.getElementById("chartStructureSub");
       if (structSub) {
@@ -1045,14 +1096,14 @@
         eqStructSub.textContent =
           cls !== "__all__" ? "Срез по выбранному классу" : "Доля единиц парка по классам";
       }
-      renderEquipmentUsageDonutChart(data);
+      renderEquipmentUsageDonutChart(liveData);
 
-      renderTables(agg, topProblemRows(data, monthSet, cls));
+      renderTables(agg, topProblemRows(liveData, monthSet, cls));
 
-      renderDiagnostics(data, periodSel?.value || "all", cls);
+      renderDiagnostics(liveData, periodSel?.value || "all", cls);
 
       document.getElementById("footerSource").textContent =
-        `Источник: ${data.meta?.source || "—"} → data/toir.json · ${data.meta?.period || ""}`;
+        `Источник: ${liveData.meta?.source || "—"} → data/toir.json · ${liveData.meta?.period || ""}`;
 
       setTimeout(() => {
         Charts.resizeAll();
@@ -1062,6 +1113,24 @@
       if (window.ToirReports && typeof window.ToirReports.syncSliceFromDashboard === "function") {
         window.ToirReports.syncSliceFromDashboard();
       }
+    };
+
+    applyFreshDashboardData = function (next) {
+      if (!next || typeof next !== "object") return;
+      liveData = next;
+      window.dashboardData = next;
+      allMonths = (liveData.charts && liveData.charts.costsByMonth ? liveData.charts.costsByMonth : []).map(
+        (m) => m.month
+      );
+      refreshClassOptionsFromLiveData();
+      drain();
+      const personnelData =
+        next.personnelUsage && typeof next.personnelUsage === "object" ? next.personnelUsage : null;
+      const personnelOrgData =
+        next.personnelOrgUsage && typeof next.personnelOrgUsage === "object" ? next.personnelOrgUsage : null;
+      renderPersonnelDlp(personnelData);
+      renderPersonnelOrgUsage(personnelOrgData);
+      assistantContextLive = buildAssistantContext(next, personnelData, personnelOrgData);
     };
 
     periodSel?.addEventListener("change", drain);
@@ -1076,6 +1145,42 @@
 
     drain();
     applyTab("summary");
+
+    const refreshDataBtn = document.getElementById("btnRefreshDashboardData");
+    const dataRefreshStatus = document.getElementById("dataRefreshStatus");
+    if (refreshDataBtn) {
+      refreshDataBtn.addEventListener("click", async () => {
+        if (!applyFreshDashboardData) return;
+        const prevLabel = refreshDataBtn.textContent;
+        refreshDataBtn.disabled = true;
+        const setStatus = (text, isError) => {
+          if (dataRefreshStatus) {
+            dataRefreshStatus.textContent = text || "";
+            dataRefreshStatus.dataset.kind = isError ? "error" : "";
+          }
+        };
+        setStatus("", false);
+        try {
+          setStatus("Загрузка…", false);
+          refreshDataBtn.textContent = "Подгрузка…";
+
+          const dashRes = await fetch("data/toir.json", { cache: "no-store" });
+          if (!dashRes.ok) throw new Error(`Не удалось прочитать data/toir.json (HTTP ${dashRes.status}).`);
+          const next = await dashRes.json();
+          if (!next || typeof next !== "object" || (!next.charts && !next.meta)) {
+            throw new Error("Файл data/toir.json имеет неожиданный формат.");
+          }
+          applyFreshDashboardData(next);
+          setStatus("Готово.", false);
+        } catch (err) {
+          const msg = String((err && err.message) || err || "Ошибка");
+          setStatus(msg, true);
+        } finally {
+          refreshDataBtn.disabled = false;
+          refreshDataBtn.textContent = prevLabel;
+        }
+      });
+    }
 
     clearLegacyAiSidebarInlineStyles();
   }
@@ -1129,7 +1234,7 @@
 
   function classCostSummary(equipmentCosts) {
     const rows = Object.entries(equipmentCosts || {})
-      .map(([name, info]) => ({ name, className: classifyClass(name), total: Number(info?.total || 0) }))
+      .map(([name, info]) => ({ name, className: equipmentClassFromData(data, name), total: Number(info?.total || 0) }))
       .filter((r) => r.total > 0);
     const byClass = new Map();
     for (const r of rows) byClass.set(r.className, (byClass.get(r.className) || 0) + r.total);
@@ -1476,7 +1581,7 @@
 
     if (intent === "class_cost_structure") {
       const rows = Object.entries(equipmentCosts)
-        .map(([name, info]) => ({ name, className: classifyClass(name), total: Number(info?.total || 0) }))
+        .map(([name, info]) => ({ name, className: equipmentClassFromData(data, name), total: Number(info?.total || 0) }))
         .filter((r) => r.total > 0);
       if (!rows.length) return noAnswer("В выгрузке нет детализации затрат по классам.");
       const byClass = new Map();
@@ -1903,6 +2008,7 @@
   }
 
   function wireAi(data, assistantContext) {
+    assistantContextLive = assistantContext;
     const log = document.getElementById("aiLog");
     const input = document.getElementById("aiInput");
     const btn = document.getElementById("aiSend");
@@ -1972,7 +2078,7 @@
             agentResult && agentResult.ok === false && agentResult.errorMessage
               ? `<div class="agent-trace">${escapeHtml(agentResult.errorMessage)}</div>`
               : "";
-          const { fact, conclusion, action } = await askCloudLlm(q, assistantContext);
+          const { fact, conclusion, action } = await askCloudLlm(q, assistantContextLive);
           pending.innerHTML =
             agentErr +
             `<div class="block-title">Факт</div>${escapeHtml(fact)}` +
@@ -1982,7 +2088,7 @@
         }
       } else {
         const pending = pushBubble('<div class="block-title">Ответ</div>Думаю\u2026', true);
-        const { fact, conclusion, action } = await askCloudLlm(q, assistantContext);
+        const { fact, conclusion, action } = await askCloudLlm(q, assistantContextLive);
         pending.innerHTML =
           `<div class="block-title">Факт</div>${escapeHtml(fact)}` +
           `<div class="block-title" style="margin-top:8px">Вывод</div>${escapeHtml(conclusion)}` +

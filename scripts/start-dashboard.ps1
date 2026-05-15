@@ -86,12 +86,12 @@ if (-not $NoRefresh) {
   if (-not $nodeCmdForBuild) {
     Write-Warning "Node.js is not found. Skip data/toir.json refresh."
   } else {
-    Write-Host "Preparing data/toir.json from 7 Excel reports ..." -ForegroundColor Yellow
+    Write-Host "Building JSON: data/toir.json (+ personnel JSON from Excel when sources exist) ..." -ForegroundColor Yellow
     & $nodeCmdForBuild "scripts/build-dashboard-json.js"
     if ($LASTEXITCODE -ne 0) {
       throw "scripts/build-dashboard-json.js failed (exit code: $LASTEXITCODE)"
     }
-    Write-Host "Done: data/toir.json prepared from reports." -ForegroundColor Green
+    Write-Host "Done: JSON built (main dashboard + optional personnel)." -ForegroundColor Green
   }
 } else {
   Write-Host "No refresh mode (-NoRefresh)." -ForegroundColor DarkYellow

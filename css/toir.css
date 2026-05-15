@@ -153,6 +153,39 @@ body {
   justify-content: flex-end;
 }
 
+.btn-header-refresh {
+  align-self: flex-start;
+  padding: 8px 14px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--tab-active-bg);
+  background: #eef2ff;
+  border: var(--control-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.btn-header-refresh:hover:not(:disabled) {
+  background: #e0e7ff;
+}
+
+.btn-header-refresh:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.header-refresh-status {
+  font-size: 0.8rem;
+  color: #64748b;
+  max-width: 320px;
+  line-height: 1.35;
+}
+
+.header-refresh-status[data-kind="error"] {
+  color: #b91c1c;
+}
+
 .titles h1 {
   margin: 0;
   font-size: clamp(1.25rem, 1rem + 1.8vw, 2.8rem);

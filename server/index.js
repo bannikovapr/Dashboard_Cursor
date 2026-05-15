@@ -2,6 +2,7 @@
 
 require("dotenv").config();
 const crypto = require("crypto");
+const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const { askOpenRouter } = require("./openrouter-client");
@@ -38,7 +39,8 @@ function isDevLoopbackOrigin(origin) {
 app.use(
   cors({
     origin(origin, cb) {
-      if (!origin) {
+      // Нет заголовка Origin (например curl) или file:// / sandbox (Origin: "null")
+      if (!origin || origin === "null") {
         return cb(null, true);
       }
       if (allowedOrigins.includes(origin) || isDevLoopbackOrigin(origin)) {

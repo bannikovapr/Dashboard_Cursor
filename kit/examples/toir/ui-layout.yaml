@@ -65,7 +65,7 @@ tabs:
       - { id: chartCausesRel,    kind: "bar",  title: "Причины отказов",  bind: "charts.failureCauses" }
       - { id: chartKtgTrend,     kind: "line", title: "Тренд КТГ",        bind: "charts.ktgMonthly" }
       - { id: chartMtbfTop,      kind: "bar",  title: "Топ СННО",         bind: "charts.mtbfByEquipment" }
-      - { id: chartMttrTop,      kind: "bar",  title: "Топ СВВ",          bind: "charts.mttrByEquipment" }
+      - { id: chartMttrTop,      kind: "bar",  title: "Топ СВР",          bind: "charts.mttrByEquipment" }
 
   - id: equipment
     label: "Оборудование"

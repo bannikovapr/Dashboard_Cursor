@@ -258,8 +258,8 @@
     const L = EL.buildExportLayout(doc_);
     const pres = EL.buildFactPackPresentation(doc_.fact_pack);
     const opts = options || {};
-    const logoHtml = logoDataUrl
-      ? `<img class="export-brand-logo" src="${logoDataUrl}" alt="" width="160" height="64" />`
+    const logoImg = logoDataUrl
+      ? `<img class="brand-logo-img export-brand-logo" src="${logoDataUrl}" alt="Desnol" width="56" height="56" decoding="async" />`
       : "";
 
     const heroChipsHtml =
@@ -394,27 +394,43 @@
       margin-bottom: 18px;
       text-align: left;
     }
-    .export-hero-top {
+    .export-hero-brand.top-header {
+      margin-bottom: 0;
+    }
+    .export-hero .brand-band {
       display: flex;
+      flex-direction: row;
       align-items: center;
-      gap: 18px;
-      flex-wrap: wrap;
+      gap: 16px;
     }
-    .export-brand-logo {
-      max-height: 56px;
-      width: auto;
-      height: auto;
-      object-fit: contain;
+    .export-hero .brand-logo-img {
+      display: block;
       flex-shrink: 0;
+      height: clamp(40px, 5vw, 56px);
+      width: auto;
+      max-width: clamp(40px, 5vw, 56px);
+      margin-left: 0;
+      object-fit: contain;
+      object-position: center;
     }
-    .export-hero-titles h1 {
-      margin: 0 0 6px;
-      font-size: 1.35rem;
+    .export-hero .brand-lockup {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0;
+      min-width: 0;
+    }
+    .export-hero .brand-lockup .titles h1 {
+      margin: 0;
+      font-size: clamp(1.15rem, 1rem + 1.1vw, 1.85rem);
       font-weight: 700;
       color: var(--tab-active);
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      word-break: break-word;
     }
-    .export-hero-titles .export-sub {
-      margin: 0;
+    .export-hero-tagline {
+      margin: 10px 0 0;
       font-size: 0.92rem;
       color: var(--muted);
       font-weight: 500;
@@ -569,9 +585,10 @@
       .print-hint { display: none !important; }
       .export-hero, .export-section, .export-front-matter, .export-toc, .export-appendix, .export-data-sheet { box-shadow: none; }
       .export-brand-logo,
-      .export-hero-titles,
+      .export-hero .brand-band,
+      .export-hero-tagline,
       .export-chips,
-      .export-hero-top {
+      .export-hero-brand {
         break-inside: avoid;
       }
       .export-hero,
@@ -626,13 +643,17 @@
   <div class="export-wrap">
     ${exportGuide}
     <header class="export-hero">
-      <div class="export-hero-top">
-        ${logoHtml}
-        <div class="export-hero-titles">
-          <h1>${escapeHtml(L.title)}</h1>
-          <p class="export-sub">Стратегический дашборд ТОиР · экспорт документа</p>
+      <div class="export-hero-brand top-header">
+        <div class="brand-band">
+          ${logoImg}
+          <div class="brand-lockup">
+            <div class="titles">
+              <h1>${escapeHtml(L.title)}</h1>
+            </div>
+          </div>
         </div>
       </div>
+      <p class="export-hero-tagline">Стратегический дашборд ТОиР · экспорт документа</p>
       ${heroChipsHtml}
     </header>
     <section class="export-front-matter">

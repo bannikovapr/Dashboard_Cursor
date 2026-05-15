@@ -70,8 +70,8 @@
       `Гипотеза срабатывает для класса-лидера, если коэффициент ≥ ${THRESHOLDS.DISPROPORTION_FACTOR.toFixed(1)} и доля затрат класса ≥ 25%. Недоступно при фильтре одного класса.`,
     ],
     R4: [
-      "По данным СВВ (MTTR) объекты группируются в классы; для класса берётся медианное СВВ (минимум 2 объекта в классе).",
-      "Сравнивается класс с максимальной медианой и общая медиана СВВ по всем объектам в срезе.",
+      "По данным СВР (MTTR) объекты группируются в классы; для класса берётся медианное СВР (минимум 2 объекта в классе).",
+      "Сравнивается класс с максимальной медианой и общая медиана СВР по всем объектам в срезе.",
       "Срабатывание: медиана класса ≥ 1,5× от общей медианы и отрыв не менее 4 ч.",
     ],
     R5: [
@@ -98,9 +98,9 @@
       "В выгрузке нет атрибута «дисциплина» или «служба» у работ — проверка помечена как неподдерживаемая до расширения источника.",
     ],
     R10: [
-      "Для объектов с ненулевыми затратами и СВВ считается ранговая корреляция Спирмена между затратами и длительностью ремонта.",
+      "Для объектов с ненулевыми затратами и СВР считается ранговая корреляция Спирмена между затратами и длительностью ремонта.",
       `Проверка рассчитана на совместное поведение «дорого → быстрее чинят». Если корреляция ≤ ${THRESHOLDS.R10_CORR_THRESHOLD.toFixed(2)}, приоритизация по критичности слабо отражена в скорости.`,
-      "Минимум 5 пар «затраты — СВВ».",
+      "Минимум 5 пар «затраты — СВР».",
     ],
     R11: [
       "По всем записям repairEvents с ненулевой длительностью считается доля ремонтов короче 2 ч.",
@@ -146,8 +146,8 @@
       "Гипотеза срабатывает, если есть хотя бы один объект с положительным СННО не выше этого порога (минимум 5 объектов в выборке).",
     ],
     K3: [
-      "По всем значениям СВВ (MTTR) считается 90-й процентиль.",
-      "Объекты с СВВ не ниже этого уровня считаются «хвостом» медленных восстановлений; гипотеза срабатывает, если такой хвост непустой (минимум 5 объектов с СВВ).",
+      "По всем значениям СВР (MTTR) считается 90-й процентиль.",
+      "Объекты с СВР не ниже этого уровня считаются «хвостом» медленных восстановлений; гипотеза срабатывает, если такой хвост непустой (минимум 5 объектов с СВР).",
     ],
     K4: [
       "По месяцам суммируются часы трудовых и материальных работ; ищется пик и сравнение с медианой по месяцам.",
@@ -168,6 +168,19 @@
     if (/робот|сварочн/i.test(s)) return "Сварка и роботы";
     if (/конвейер|грохот|дробилк|мельниц|центрифуг|котёл|холодильн|гидропресс/i.test(s)) return "Прочее промышленное";
     return "Прочее";
+  }
+
+  /** Класс из «Список оборудования» (tables.equipmentClassByName), иначе эвристика. */
+  function equipmentClassFromRaw(raw, name) {
+    if (!name) return "Прочее";
+    const nm = String(name);
+    if (nm === "Итого") return classifyClass(nm);
+    const map = raw && raw.tables && raw.tables.equipmentClassByName;
+    if (map && typeof map === "object" && Object.prototype.hasOwnProperty.call(map, nm)) {
+      const v = map[nm];
+      if (v != null && String(v).trim()) return String(v).trim();
+    }
+    return classifyClass(nm);
   }
 
   function monthsForPeriod(period) {
@@ -369,7 +382,7 @@
     const costsByMonth = (raw && raw.charts && raw.charts.costsByMonth) || [];
     const materialLaborByMonth = (raw && raw.charts && raw.charts.materialLaborByMonth) || [];
 
-    const inClass = (name) => !classActive || classifyClass(name) === classFilter;
+    const inClass = (name) => !classActive || equipmentClassFromRaw(raw, name) === classFilter;
     const periodFraction = monthSet.size / 12;
 
     const equipmentCosts = [];
@@ -410,7 +423,7 @@
       if (!inClass(name)) continue;
       defects.push({
         name,
-        class: classifyClass(name),
+        class: equipmentClassFromRaw(raw, name),
         count: (Number(count) || 0) * periodFraction,
       });
     }
@@ -419,7 +432,7 @@
       .filter((r) => inClass(r && r.equipment))
       .map((r) => ({
         equipment: r.equipment,
-        class: classifyClass(r.equipment),
+        class: equipmentClassFromRaw(raw, r.equipment),
         mtbf_h: Number(r.mtbf_h) || 0,
       }));
 
@@ -427,7 +440,7 @@
       .filter((r) => inClass(r && r.equipment))
       .map((r) => ({
         equipment: r.equipment,
-        class: classifyClass(r.equipment),
+        class: equipmentClassFromRaw(raw, r.equipment),
         mttr_h: Number(r.mttr_h) || 0,
       }));
 
@@ -477,7 +490,7 @@
         end: e.end || "",
         duration_h: Number(e.duration_h) || 0,
         month: monthKey,
-        class: classifyClass(e.equipment),
+        class: equipmentClassFromRaw(raw, e.equipment),
       });
     }
 
@@ -699,11 +712,11 @@
     const action =
       "Проверить обеспеченность ЗИП и стандарт быстрого восстановления для классов с аномальным временем ремонта.";
     if (!ctx.mttr.length) {
-      return makeInsufficient("R4", title, action, "Нет данных по СВВ (MTTR) объектов.");
+      return makeInsufficient("R4", title, action, "Нет данных по СВР (MTTR) объектов.");
     }
     const overallMedian = median(ctx.mttr.map((r) => r.mttr_h));
     if (!overallMedian) {
-      return makeInsufficient("R4", title, action, "Не удалось рассчитать медианное СВВ.");
+      return makeInsufficient("R4", title, action, "Не удалось рассчитать медианное СВР.");
     }
     const classMap = new Map();
     for (const r of ctx.mttr) {
@@ -721,24 +734,24 @@
       .sort((a, b) => b.median_mttr_h - a.median_mttr_h);
     if (!classes.length) {
       return makeInsufficient("R4", title, action,
-        "Нет классов с минимум 2 объектами в данных СВВ.");
+        "Нет классов с минимум 2 объектами в данных СВР.");
     }
     const worst = classes[0];
     const triggered = worst.median_mttr_h >= overallMedian * 1.5
       && worst.median_mttr_h - overallMedian >= 4;
-    const summary = `Класс «${worst.class}» имеет медианное СВВ ${formatHours(worst.median_mttr_h)} ч ` +
+    const summary = `Класс «${worst.class}» имеет медианное СВР ${formatHours(worst.median_mttr_h)} ч ` +
       `против ${formatHours(overallMedian)} ч по срезу.`;
     return makeRecommendation("R4", title,
       triggered ? STATUS.TRIGGERED : STATUS.NOT_TRIGGERED, summary, action, {
-      evidence_notes: [`Общая медиана СВВ по срезу: ${formatHours(overallMedian)} ч.`],
+      evidence_notes: [`Общая медиана СВР по срезу: ${formatHours(overallMedian)} ч.`],
       evidence: {
         type: "table",
-        title: "Классы по медианному СВВ",
+        title: "Классы по медианному СВР",
         columns: [
           { key: "class", label: "Класс" },
           { key: "incidents", label: "Объектов", format: "int" },
-          { key: "median_mttr_h", label: "Медиана СВВ, ч", format: "hours" },
-          { key: "avg_mttr_h", label: "Среднее СВВ, ч", format: "hours" },
+          { key: "median_mttr_h", label: "Медиана СВР, ч", format: "hours" },
+          { key: "avg_mttr_h", label: "Среднее СВР, ч", format: "hours" },
         ],
         rows: classes.slice(0, 10),
       },
@@ -795,7 +808,7 @@
       .filter((r) => r.mttr_h > 0 && r.cost > 0);
     if (pairs.length < 5) {
       return makeInsufficient("R10", title, action,
-        "Нужны минимум 5 объектов с заполненными СВВ и затратами.");
+        "Нужны минимум 5 объектов с заполненными СВР и затратами.");
     }
     const corr = spearmanCorrelation(
       pairs.map((p) => p.cost),
@@ -806,18 +819,18 @@
         "Не удалось рассчитать ранговую корреляцию.");
     }
     const triggered = corr <= THRESHOLDS.R10_CORR_THRESHOLD;
-    const summary = `Ранговая корреляция между затратами и СВВ объектов: ${corr.toFixed(2)} ` +
+    const summary = `Ранговая корреляция между затратами и СВР объектов: ${corr.toFixed(2)} ` +
       `(по ${pairs.length} объектам).`;
     return makeRecommendation("R10", title,
       triggered ? STATUS.TRIGGERED : STATUS.NOT_TRIGGERED, summary, action, {
       evidence_notes: ["Если приоритизация работает, дорогие объекты восстанавливаются хотя бы не медленнее остальных."],
       evidence: {
         type: "table",
-        title: "Затраты vs СВВ по объектам (топ-10 по затратам)",
+        title: "Затраты vs СВР по объектам (топ-10 по затратам)",
         columns: [
           { key: "name", label: "Объект" },
           { key: "cost", label: "Затраты, руб.", format: "money" },
-          { key: "mttr_h", label: "СВВ, ч", format: "hours" },
+          { key: "mttr_h", label: "СВР, ч", format: "hours" },
         ],
         rows: [...pairs].sort((a, b) => b.cost - a.cost).slice(0, 10),
       },
@@ -1041,23 +1054,23 @@
   }
 
   function _analyzeK3(ctx) {
-    const title = "Есть объекты с аномально высоким СВВ";
+    const title = "Есть объекты с аномально высоким СВР";
     const action =
       "Разобрать длинные ремонты: проверить ЗИП, регламент и квалификацию; внедрить стандарт быстрого восстановления.";
     if (ctx.mttr.length < 5) {
       return makeInsufficient("K3", title, action,
-        "Нужны данные СВВ минимум по 5 объектам.");
+        "Нужны данные СВР минимум по 5 объектам.");
     }
     const p90 = quantile(ctx.mttr.map((r) => r.mttr_h), THRESHOLDS.MTTR_QUANTILE);
     if (!p90) {
       return makeInsufficient("K3", title, action,
-        "Не удалось рассчитать 90-й процентиль СВВ.");
+        "Не удалось рассчитать 90-й процентиль СВР.");
     }
     const flagged = ctx.mttr
       .filter((r) => r.mttr_h >= p90)
       .sort((a, b) => b.mttr_h - a.mttr_h);
     const triggered = flagged.length >= 1;
-    const summary = `90-й процентиль СВВ: ${formatHours(p90)} ч; ` +
+    const summary = `90-й процентиль СВР: ${formatHours(p90)} ч; ` +
       `объектов на этом уровне или выше: ${flagged.length}.`;
     const notes = flagged.length
       ? [`Самые медленные ремонты: ${flagged.slice(0, 5).map((r) => r.equipment).join(", ")}.`]
@@ -1067,11 +1080,11 @@
       evidence_notes: notes,
       evidence: {
         type: "table",
-        title: "Объекты с наибольшим СВВ",
+        title: "Объекты с наибольшим СВР",
         columns: [
           { key: "equipment", label: "Объект" },
           { key: "class", label: "Класс" },
-          { key: "mttr_h", label: "СВВ, ч", format: "hours" },
+          { key: "mttr_h", label: "СВР, ч", format: "hours" },
         ],
         rows: flagged.slice(0, 10),
       },

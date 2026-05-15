@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Анализ ТОиР-данных из 7 отдельных отчётов Excel + опционально данные персонала.
-Извлекает: затраты по объектам, причины отказов, КТГ, простои; при наличии файлов —
-«Использование персонала» и «Анализ использования персонала» встраиваются в тот же JSON.
+Анализ ТОиР-данных из девяти обязательных отчётов Excel: семь отчётов по ТОиР
+и два отчёта по персоналу («Использование персонала», «Анализ использования
+персонала» / организационный срез — см. personnel_reports).
+
+Извлекает: затраты по объектам, причины отказов, КТГ, простои, загрузку персонала.
+Без обоих файлов персонала сборка завершается с ошибкой.
+
 Формирует data/toir.json.
 """
 from __future__ import annotations
@@ -552,6 +556,81 @@ def parse_equipment_list_usage_pct(wb) -> dict[str, float]:
     return out
 
 
+def _header_text_is_class_column(s: str) -> bool:
+    """Заголовок столбца класса/группы/вида оборудования (не «% использования»)."""
+    low = s.lower().replace("ё", "е")
+    if "процент" in low and "использован" in low:
+        return False
+    if "класс" in low:
+        return True
+    if "группа" in low and "оборуд" in low:
+        return True
+    if "вид" in low and "оборуд" in low:
+        return True
+    if "тип" in low and "оборуд" in low:
+        return True
+    return False
+
+
+def parse_equipment_list_classes(wb) -> dict[str, str]:
+    """
+    Столбец класса (или группы/вида) на первом листе «Список оборудования».
+    Ключ — наименование; значение — строка из отчёта.
+    """
+    ws = wb[wb.sheetnames[0]]
+    rows = all_rows(ws)
+    class_col = None
+    header_row_idx = None
+    for i, row in enumerate(rows[:80]):
+        if not row:
+            continue
+        for j, val in enumerate(row):
+            c = cell(val)
+            if isinstance(c, str) and _header_text_is_class_column(c):
+                class_col = j
+                header_row_idx = i
+                break
+        if class_col is not None:
+            break
+    if class_col is None or header_row_idx is None:
+        return {}
+
+    name_col = 0
+    hdr = rows[header_row_idx]
+    for j, val in enumerate(hdr):
+        vv = cell(val)
+        if not isinstance(vv, str):
+            continue
+        low = vv.lower().replace("ё", "е")
+        if "наименован" in low or low.strip() in ("оборудование", "название", "объект", "единица оборудования"):
+            name_col = j
+            break
+
+    out: dict[str, str] = {}
+    for row in rows[header_row_idx + 1 :]:
+        if not row:
+            continue
+        if name_col >= len(row) or class_col >= len(row):
+            continue
+        nm = cell(row[name_col])
+        cl = cell(row[class_col])
+        if not nm or not isinstance(nm, str):
+            continue
+        name = nm.strip()
+        if len(name) < 2:
+            continue
+        if cl is None:
+            continue
+        if isinstance(cl, str):
+            class_str = cl.strip()
+        else:
+            class_str = str(cl).strip()
+        if not class_str:
+            continue
+        out[name] = class_str
+    return out
+
+
 def extract_wear_report_image() -> str | None:
     """
     Извлекает первую картинку из отчета «Процент износа.xlsx» и сохраняет в assets/generated.
@@ -580,7 +659,7 @@ def load_source_workbooks():
     Возвращает (sources, source_label).
     - sources: dict[str, Workbook], где ключ = имя листа/отчета
     - source_label: строка для meta.source
-    Ожидаются 7 отдельных файлов отчетов.
+    Ожидаются 7 отдельных файлов отчётов ТОиР (персонал подключается отдельно в main()).
     """
     split_paths = {s: DATA_DIR / f"{s}.xlsx" for s in REPORT_SHEETS}
     sources = {}
@@ -589,7 +668,7 @@ def load_source_workbooks():
         raise FileNotFoundError(f"Не найдены обязательные отчеты: {', '.join(missing)}")
     for sheet, p in split_paths.items():
         sources[sheet] = openpyxl.load_workbook(str(p), read_only=True, data_only=True)
-    src = "7 файлов отчетов (*.xlsx)"
+    src = "7 файлов отчётов ТОиР (*.xlsx) + обязательные отчёты по персоналу в data/"
     return sources, src
 
 
@@ -611,6 +690,7 @@ def main():
     material_labor = parse_material_labor_monthly(wb_analysis)
     wear_image = extract_wear_report_image()
     equipment_usage_pct = parse_equipment_list_usage_pct(sources["Список оборудования"])
+    equipment_class_by_name = parse_equipment_list_classes(sources["Список оборудования"])
 
     for wb in sources.values():
         wb.close()
@@ -672,6 +752,7 @@ def main():
             "equipmentDefects": equip_defects,
             "repairEvents": repair_events,
             "equipmentUsagePct": equipment_usage_pct,
+            "equipmentClassByName": equipment_class_by_name,
         },
         "analysis": {
             "top3_cost_leaders": [
@@ -693,11 +774,29 @@ def main():
     try:
         pu = personnel_reports.build_personnel_usage_payload(DATA_DIR)
     except Exception as ex:
-        print(f"WARN: personnelUsage не собран: {ex}")
+        print(f"ОШИБКА: personnelUsage не собран: {ex}", file=sys.stderr)
+        return 1
     try:
         po = personnel_reports.build_personnel_org_payload(DATA_DIR)
     except Exception as ex:
-        print(f"WARN: personnelOrgUsage не собран: {ex}")
+        print(f"ОШИБКА: personnelOrgUsage не собран: {ex}", file=sys.stderr)
+        return 1
+
+    if pu is None:
+        print(
+            "ОШИБКА: нет обязательного отчёта по персоналу в data/. "
+            "Добавьте «Использование персонала.xlsx» или файл .xlsx, в имени которого есть «использован» и «персонал».",
+            file=sys.stderr,
+        )
+        return 1
+    if po is None:
+        print(
+            "ОШИБКА: нет обязательного отчёта «анализ использования персонала» в data/. "
+            "Добавьте «Анализ использования персонала организация.xlsx», «Анализ использования персонала.xlsx» "
+            "или другой подходящий файл (см. personnel_reports.find_org_personnel_analysis_xlsx).",
+            file=sys.stderr,
+        )
+        return 1
 
     toir_json["personnelUsage"] = pu
     toir_json["personnelOrgUsage"] = po
@@ -730,17 +829,19 @@ def main():
 
     print(f"\nSaved: {OUT}")
     print(f"Процент использования (Список оборудования): объектов с показателем — {len(equipment_usage_pct)}")
-    if pu:
-        print(f"Встроено personnelUsage: сотрудников {pu['meta'].get('employees_count')}, файл {pu['meta'].get('source')}")
-    else:
-        print("personnelUsage: нет (нет отчёта «Использование персонала» или ошибка разбора)")
-    if po:
+    if equipment_class_by_name:
+        distinct = len(set(equipment_class_by_name.values()))
         print(
-            f"Встроено personnelOrgUsage: орг. {po['meta'].get('organizations_count')}, "
-            f"подр. {po['meta'].get('departments_count')}, файл {po['meta'].get('source')}"
+            f"Классы по «Список оборудования»: привязок наименование→класс — {len(equipment_class_by_name)}, "
+            f"уникальных классов — {distinct}"
         )
     else:
-        print("personnelOrgUsage: нет (нет отчёта «Анализ использования персонала» или ошибка разбора)")
+        print("Классы по «Список оборудования»: столбец класса не найден — в JSON используется классификация по имени на фронте")
+    print(f"Встроено personnelUsage: сотрудников {pu['meta'].get('employees_count')}, файл {pu['meta'].get('source')}")
+    print(
+        f"Встроено personnelOrgUsage: орг. {po['meta'].get('organizations_count')}, "
+        f"подр. {po['meta'].get('departments_count')}, файл {po['meta'].get('source')}"
+    )
     return 0
 
 

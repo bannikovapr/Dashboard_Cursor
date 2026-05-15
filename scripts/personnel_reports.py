@@ -1,55 +1,221 @@
 # -*- coding: utf-8 -*-
 """
-Builds a personnel-by-organization dataset from:
-  data/Анализ использования персонала организация.xlsx
+Разбор отчётов по персоналу для встраивания в data/toir.json (обязательны при сборке дашборда).
 
-Output:
-  data/personnel_org_usage.json
+Источники в data/: «Использование персонала*.xlsx», «Анализ использования персонала*.xlsx»
+(точные шаблоны имён — см. find_personnel_usage_xlsx / find_org_personnel_analysis_xlsx).
 """
 from __future__ import annotations
 
-import json
 import re
 from collections import defaultdict
 from pathlib import Path
 
 import openpyxl
 
-
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-OUT_JSON = DATA_DIR / "personnel_org_usage.json"
-FIO_PATRONYMIC_RE = re.compile(r"(ович|евич|ична|овна|евна|оглы|улы|кызы)$", re.IGNORECASE)
+FIO_PATRONYMIC_ORG_RE = re.compile(r"(ович|евич|ична|овна|евна|оглы|улы|кызы)$", re.IGNORECASE)
 DATE_RE = re.compile(r"^\d{2}\.\d{2}\.\d{4}$")
 
+_CYR_U = r"\u0410-\u042f\u0401"
+_CYR_L = r"\u0430-\u044f\u0451"
+_WORD = rf"[{_CYR_U}][{_CYR_L}]+(?:-[{_CYR_U}][{_CYR_L}]+)?"
+FIO_RE_USAGE = re.compile(rf"^{_WORD}\s+{_WORD}\s+{_WORD}$")
 
-def find_source() -> Path:
-    explicit = DATA_DIR / "org_personnel_usage.xlsx"
-    if explicit.exists():
-        return explicit
+HOURS_RE_USAGE = re.compile(
+    r"^\s*(?:(?P<h>\d+)\s*\u0447\.\s*)?(?:(?P<m>\d+)\s*\u043c\u0438\u043d\.\s*)?(?:(?P<s>\d+)\s*\u0441\.)?\s*$",
+    re.IGNORECASE,
+)
 
-    lowered = []
-    for p in DATA_DIR.glob("*.xlsx"):
-        lowered.append((p, p.name.lower()))
 
-    for p, low in lowered:
+def find_personnel_usage_xlsx(data_dir: Path) -> Path | None:
+    preferred = data_dir / "Использование персонала.xlsx"
+    if preferred.exists():
+        return preferred
+    for p in data_dir.glob("*.xlsx"):
+        low = p.name.lower()
+        if "использован" in low and "персонал" in low:
+            return p
+    return None
+
+
+def find_org_personnel_analysis_xlsx(data_dir: Path) -> Path | None:
+    for name in (
+        "Анализ использования персонала организация.xlsx",
+        "Анализ использования персонала.xlsx",
+    ):
+        p = data_dir / name
+        if p.exists():
+            return p
+    legacy = data_dir / "org_personnel_usage.xlsx"
+    if legacy.exists():
+        return legacy
+    for p in data_dir.glob("*.xlsx"):
+        low = p.name.lower()
+        if "анализ" in low and "персонал" in low:
+            return p
+    for p in data_dir.glob("*.xlsx"):
+        low = p.name.lower()
         if "организац" in low and "персонал" in low:
             return p
-
-    for p, low in lowered:
-        if "организац" in low:
-            return p
-
-    raise FileNotFoundError("Cannot locate source XLSX for personnel usage by organization.")
+    return None
 
 
-def clean_text(value) -> str | None:
+def _clean_usage(v):
+    if v is None:
+        return None
+    if isinstance(v, str):
+        s = v.strip()
+        return s if s else None
+    return v
+
+
+def _parse_hours_usage(v) -> float:
+    if v is None:
+        return 0.0
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip().replace("\xa0", " ")
+    m = HOURS_RE_USAGE.match(s)
+    if m:
+        h = int(m.group("h") or 0)
+        mm = int(m.group("m") or 0)
+        ss = int(m.group("s") or 0)
+        return h + (mm / 60.0) + (ss / 3600.0)
+    try:
+        return float(s.replace(",", "."))
+    except ValueError:
+        return 0.0
+
+
+def _is_fio_usage(text: str) -> bool:
+    return bool(FIO_RE_USAGE.match(text or ""))
+
+
+def _find_usage_columns(rows):
+    header_main_idx = None
+    for i, row in enumerate(rows):
+        if _clean_usage(row[0]) == "Сотрудник":
+            header_main_idx = i
+            break
+    if header_main_idx is None:
+        raise RuntimeError("Не найдена строка заголовка с первым столбцом «Сотрудник»")
+
+    header_main = rows[header_main_idx]
+    header_kinds = rows[header_main_idx + 2] if header_main_idx + 2 < len(rows) else []
+
+    total_start = None
+    for j, v in enumerate(header_main):
+        cv = _clean_usage(v)
+        if isinstance(cv, str) and "итого" in cv.lower():
+            total_start = j
+            break
+    if total_start is None:
+        total_start = max(0, len(header_main) - 2)
+
+    fact_col = None
+    plan_col = None
+    for j in range(total_start, len(header_kinds)):
+        cv = _clean_usage(header_kinds[j])
+        if cv == "Факт" and fact_col is None:
+            fact_col = j
+        elif cv == "План" and plan_col is None:
+            plan_col = j
+
+    if fact_col is None:
+        fact_col = total_start
+    if plan_col is None:
+        plan_col = min(total_start + 1, max(0, len(header_main) - 1))
+
+    return header_main_idx + 3, fact_col, plan_col
+
+
+def build_personnel_usage_payload(data_dir: Path) -> dict | None:
+    """Пейлоад как раньше в personnel_dlp_test.json (meta, table, chart)."""
+    src = find_personnel_usage_xlsx(data_dir)
+    if src is None or not src.exists():
+        return None
+
+    wb = openpyxl.load_workbook(src, read_only=True, data_only=True)
+    ws = wb[wb.sheetnames[0]]
+    sheet_title = ws.title
+    rows = list(ws.iter_rows(values_only=True))
+
+    data_start, fact_col, plan_col = _find_usage_columns(rows)
+
+    agg = {}
+    for row in rows[data_start:]:
+        if not row:
+            continue
+        fio = _clean_usage(row[0]) if len(row) > 0 else None
+        if not isinstance(fio, str) or not _is_fio_usage(fio):
+            continue
+
+        fact_h = _parse_hours_usage(row[fact_col] if fact_col < len(row) else None)
+        plan_h = _parse_hours_usage(row[plan_col] if plan_col < len(row) else None)
+
+        cur = agg.get(fio)
+        if cur is None:
+            agg[fio] = {"employee": fio, "fact_h": fact_h, "plan_h": plan_h}
+        else:
+            cur["fact_h"] += fact_h
+            cur["plan_h"] += plan_h
+
+    wb.close()
+
+    rows_out = []
+    for v in agg.values():
+        plan_h = v["plan_h"]
+        util = (v["fact_h"] / plan_h * 100.0) if plan_h > 0 else None
+        rows_out.append(
+            {
+                "employee": v["employee"],
+                "fact_h": round(v["fact_h"], 2),
+                "plan_h": round(v["plan_h"], 2),
+                "utilization_pct": round(util, 2) if util is not None else None,
+            }
+        )
+
+    rows_out.sort(key=lambda x: x["fact_h"], reverse=True)
+    top = rows_out[:10]
+
+    return {
+        "meta": {
+            "source": src.name,
+            "sheet": sheet_title,
+            "purpose": "Personnel utilization dataset for dashboard assistant",
+            "employees_count": len(rows_out),
+        },
+        "table": {
+            "title": "Ремонтные работы сотрудников за год (итого)",
+            "columns": [
+                {"key": "employee", "label": "Сотрудник"},
+                {"key": "fact_h", "label": "Факт, ч"},
+                {"key": "plan_h", "label": "План, ч"},
+                {"key": "utilization_pct", "label": "Выполнение, %"},
+            ],
+            "rows": rows_out,
+        },
+        "chart": {
+            "type": "chart",
+            "title": "Топ-10 сотрудников по выполненным ремонтным работам (факт, ч)",
+            "chartType": "bar",
+            "categories": [x["employee"] for x in top],
+            "series": [
+                {"name": "Факт, ч", "data": [x["fact_h"] for x in top]},
+                {"name": "План, ч", "data": [x["plan_h"] for x in top]},
+            ],
+        },
+    }
+
+
+def _clean_org_text(value) -> str | None:
     if value is None:
         return None
     s = str(value).strip()
     return s or None
 
 
-def parse_hours(value) -> float:
+def _parse_hours_org(value) -> float:
     if value is None:
         return 0.0
     if isinstance(value, (int, float)):
@@ -59,7 +225,6 @@ def parse_hours(value) -> float:
     if not s:
         return 0.0
 
-    # 1 640 -> 1640
     s_compact = re.sub(r"(?<=\d)\s+(?=\d)", "", s)
     nums = [int(x) for x in re.findall(r"\d+", s_compact)]
     if nums and re.search(r"[A-Za-zА-Яа-яЁё]", s_compact):
@@ -74,7 +239,7 @@ def parse_hours(value) -> float:
         return 0.0
 
 
-def is_fio(value: str | None) -> bool:
+def _is_fio_org(value: str | None) -> bool:
     if not value:
         return False
     parts = [x for x in str(value).split() if x]
@@ -82,12 +247,12 @@ def is_fio(value: str | None) -> bool:
         return False
     if any(any(ch.isdigit() for ch in p) for p in parts):
         return False
-    if not FIO_PATRONYMIC_RE.search(parts[2]):
+    if not FIO_PATRONYMIC_ORG_RE.search(parts[2]):
         return False
     return all(p[0].isalpha() and p[0].upper() == p[0] for p in parts)
 
 
-def is_org_row(value: str, current_org: str | None) -> bool:
+def _is_org_row_org(value: str, current_org: str | None) -> bool:
     if current_org is None:
         return True
     low = value.lower()
@@ -100,23 +265,23 @@ def is_org_row(value: str, current_org: str | None) -> bool:
     return False
 
 
-def find_header_start(ws) -> int:
+def _find_org_header_start(ws) -> int:
     for r in range(1, min(ws.max_row, 60) + 1):
-        v = clean_text(ws.cell(r, 1).value)
+        v = _clean_org_text(ws.cell(r, 1).value)
         if not v:
             continue
         low = v.lower()
         if low == "организация" or low.startswith("организация "):
             return r
-    raise RuntimeError("Cannot find header row with first column 'Организация'.")
+    raise RuntimeError("Не найдена строка заголовка с первым столбцом «Организация»")
 
 
-def build_month_specs(ws, header_row: int):
+def _build_org_month_specs(ws, header_row: int):
     month_cols = []
     total_col = None
 
     for c in range(2, ws.max_column + 1):
-        v = clean_text(ws.cell(header_row, c).value)
+        v = _clean_org_text(ws.cell(header_row, c).value)
         if not v:
             continue
         if DATE_RE.match(v):
@@ -129,7 +294,7 @@ def build_month_specs(ws, header_row: int):
         end_col = month_cols[idx + 1][1] if idx + 1 < len(month_cols) else (total_col or ws.max_column + 1)
         labeled_cols = []
         for c in range(start_col, end_col):
-            marker = clean_text(ws.cell(header_row + 2, c).value)
+            marker = _clean_org_text(ws.cell(header_row + 2, c).value)
             if marker:
                 labeled_cols.append(c)
         if not labeled_cols:
@@ -142,7 +307,7 @@ def build_month_specs(ws, header_row: int):
     if total_col:
         labeled_cols = []
         for c in range(total_col, ws.max_column + 1):
-            marker = clean_text(ws.cell(header_row + 2, c).value)
+            marker = _clean_org_text(ws.cell(header_row + 2, c).value)
             if marker:
                 labeled_cols.append(c)
         if labeled_cols:
@@ -154,7 +319,7 @@ def build_month_specs(ws, header_row: int):
     return specs, total_spec
 
 
-def make_month_maps(monthly_values, months):
+def _make_month_maps(monthly_values, months):
     fact = {}
     plan = {}
     for month in months:
@@ -164,14 +329,19 @@ def make_month_maps(monthly_values, months):
     return fact, plan
 
 
-def build():
-    src_xlsx = find_source()
-    wb = openpyxl.load_workbook(src_xlsx, read_only=True, data_only=True)
-    ws = wb[wb.sheetnames[0]]
+def build_personnel_org_payload(data_dir: Path) -> dict | None:
+    """Пейлоад как раньше в personnel_org_usage.json."""
+    src = find_org_personnel_analysis_xlsx(data_dir)
+    if src is None:
+        return None
 
-    header_row = find_header_start(ws)
+    wb = openpyxl.load_workbook(src, read_only=True, data_only=True)
+    ws = wb[wb.sheetnames[0]]
+    sheet_title = ws.title
+
+    header_row = _find_org_header_start(ws)
     data_start_row = header_row + 3
-    month_specs, total_spec = build_month_specs(ws, header_row)
+    month_specs, total_spec = _build_org_month_specs(ws, header_row)
     months = [x["month"] for x in month_specs]
 
     rows = []
@@ -179,7 +349,7 @@ def build():
     current_department = None
 
     for r in range(data_start_row, ws.max_row + 1):
-        label = clean_text(ws.cell(r, 1).value)
+        label = _clean_org_text(ws.cell(r, 1).value)
         if not label:
             continue
         if label.lower() == "итого":
@@ -190,20 +360,20 @@ def build():
         sum_plan = 0.0
         for spec in month_specs:
             month = spec["month"]
-            fact_h = parse_hours(ws.cell(r, spec["fact_col"]).value) if spec.get("fact_col") else 0.0
-            plan_h = parse_hours(ws.cell(r, spec["plan_col"]).value) if spec.get("plan_col") else 0.0
+            fact_h = _parse_hours_org(ws.cell(r, spec["fact_col"]).value) if spec.get("fact_col") else 0.0
+            plan_h = _parse_hours_org(ws.cell(r, spec["plan_col"]).value) if spec.get("plan_col") else 0.0
             monthly[month] = {"fact_h": round(fact_h, 2), "plan_h": round(plan_h, 2)}
             sum_fact += fact_h
             sum_plan += plan_h
 
-        total_fact = parse_hours(ws.cell(r, total_spec["fact_col"]).value) if total_spec and total_spec.get("fact_col") else 0.0
-        total_plan = parse_hours(ws.cell(r, total_spec["plan_col"]).value) if total_spec and total_spec.get("plan_col") else 0.0
+        total_fact = _parse_hours_org(ws.cell(r, total_spec["fact_col"]).value) if total_spec and total_spec.get("fact_col") else 0.0
+        total_plan = _parse_hours_org(ws.cell(r, total_spec["plan_col"]).value) if total_spec and total_spec.get("plan_col") else 0.0
         fact_h = total_fact if total_fact > 0 else sum_fact
         plan_h = total_plan if total_plan > 0 else sum_plan
 
-        if is_fio(label):
+        if _is_fio_org(label):
             row_type = "employee"
-        elif is_org_row(label, current_org):
+        elif _is_org_row_org(label, current_org):
             row_type = "organization"
         else:
             row_type = "department"
@@ -233,7 +403,7 @@ def build():
 
     employee_rows = [x for x in rows if x["type"] == "employee" and x["employee"]]
     for x in employee_rows:
-        monthly_fact, monthly_plan = make_month_maps(x.get("monthly") or {}, months)
+        monthly_fact, monthly_plan = _make_month_maps(x.get("monthly") or {}, months)
         x["monthly_fact_h"] = monthly_fact
         x["monthly_plan_h"] = monthly_plan
         x.pop("monthly", None)
@@ -296,10 +466,10 @@ def build():
     organizations.sort(key=lambda x: x["fact_h"], reverse=True)
 
     top_departments = departments[:12]
-    payload = {
+    return {
         "meta": {
-            "source": src_xlsx.name,
-            "sheet": ws.title,
+            "source": src.name,
+            "sheet": sheet_title,
             "purpose": "Personnel usage by organizations/departments/employees for dashboard and AI agent",
             "months": months,
             "organizations_count": len(organizations),
@@ -331,22 +501,3 @@ def build():
             ],
         },
     }
-
-    OUT_JSON.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Saved: {OUT_JSON}")
-    print(
-        json.dumps(
-            {
-                "source": src_xlsx.name,
-                "months": len(months),
-                "organizations": len(organizations),
-                "departments": len(departments),
-                "employees": len(employee_rows),
-            },
-            ensure_ascii=False,
-        )
-    )
-
-
-if __name__ == "__main__":
-    build()
