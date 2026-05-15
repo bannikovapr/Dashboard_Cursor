@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light;
   --brand-primary: #000000;
   --brand-bg: #ffffff;
   --brand-card: #ffffff;
@@ -8,6 +9,13 @@
   --border: #d8dee6;
   --muted: #5c6570;
   --tab-active-bg: #0f172a;
+  --dash-heading: #0f172a;
+  --surface-subtle: #f8fafc;
+  --header-btn-bg: #eef2ff;
+  --header-btn-bg-hover: #e0e7ff;
+  --header-btn-text: #0f172a;
+  --chart-grid: #e2e8f0;
+  --chart-axis: #64748b;
   --chart-bar: #1ed760;
   --chart-g-1: #14532d;
   --chart-g-2: #166534;
@@ -34,6 +42,48 @@
   --dash-section-gap: 18px;
   /* Две колонки отчётов в одной строке сетки — общая min-height */
   --report-layout-min-height: min(50vh, 552px);
+  --report-preview-bg: #fafafa;
+  --report-preview-changed-bg: #f3f8ff;
+  --report-list-hover-bg: #f0fdf4;
+  --report-list-active-bg: #ecfdf5;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --brand-primary: #f8fafc;
+  --brand-bg: #0f172a;
+  --brand-card: #1e293b;
+  --brand-text: #e2e8f0;
+  --brand-accent: #22c55e;
+  --page-bg: #0b1120;
+  --border: #334155;
+  --muted: #94a3b8;
+  --tab-active-bg: #e2e8f0;
+  --dash-heading: #f1f5f9;
+  --surface-subtle: #172033;
+  --header-btn-bg: #334155;
+  --header-btn-bg-hover: #475569;
+  --header-btn-text: #f1f5f9;
+  --chart-grid: #334155;
+  --chart-axis: #94a3b8;
+  --chart-bar: #22c55e;
+  --chart-g-1: #22c55e;
+  --chart-g-2: #4ade80;
+  --chart-g-3: #86efac;
+  --chart-g-4: #a7f3d0;
+  --chart-g-5: #6ee7b7;
+  --chart-g-6: #34d399;
+  --chart-g-7: #10b981;
+  --chart-g-8: #22c55e;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  --control-bg: #1e293b;
+  --control-text: #6ee7b7;
+  --control-text-active: #0f172a;
+  --control-bg-active: #22c55e;
+  --report-preview-bg: #1a2332;
+  --report-preview-changed-bg: #1e3a5f;
+  --report-list-hover-bg: rgba(34, 197, 94, 0.16);
+  --report-list-active-bg: rgba(34, 197, 94, 0.26);
 }
 
 *,
@@ -96,7 +146,7 @@ body {
 }
 
 .header-card {
-  background: #ffffff;
+  background: var(--brand-card);
   border-color: var(--border);
 }
 
@@ -153,21 +203,46 @@ body {
   justify-content: flex-end;
 }
 
+.header-side-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
 .btn-header-refresh {
   align-self: flex-start;
   padding: 8px 14px;
   font-family: inherit;
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--tab-active-bg);
-  background: #eef2ff;
+  color: var(--header-btn-text);
+  background: var(--header-btn-bg);
   border: var(--control-border);
   border-radius: 8px;
   cursor: pointer;
 }
 
 .btn-header-refresh:hover:not(:disabled) {
-  background: #e0e7ff;
+  background: var(--header-btn-bg-hover);
+}
+
+.btn-header-theme {
+  padding: 8px 12px;
+  min-width: 42px;
+  font-family: inherit;
+  font-size: 1.05rem;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--header-btn-text);
+  background: var(--header-btn-bg);
+  border: var(--control-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.btn-header-theme:hover {
+  background: var(--header-btn-bg-hover);
 }
 
 .btn-header-refresh:disabled {
@@ -177,7 +252,7 @@ body {
 
 .header-refresh-status {
   font-size: 0.8rem;
-  color: #64748b;
+  color: var(--muted);
   max-width: 320px;
   line-height: 1.35;
 }
@@ -190,7 +265,7 @@ body {
   margin: 0;
   font-size: clamp(1.25rem, 1rem + 1.8vw, 2.8rem);
   font-weight: 700;
-  color: var(--tab-active-bg);
+  color: var(--dash-heading);
   letter-spacing: -0.02em;
   line-height: 1.12;
 }
@@ -204,7 +279,7 @@ body {
   border: var(--control-border);
   border-bottom: none;
   border-radius: 10px 10px 0 0;
-  background: #f8fafc;
+  background: var(--surface-subtle);
 }
 
 .header-chip {
@@ -271,7 +346,7 @@ body {
   border-radius: var(--control-radius);
   border: var(--control-border);
   background: var(--control-bg);
-  color: #0f172a;
+  color: var(--dash-heading);
   min-width: 0;
   cursor: pointer;
   width: 100%;
@@ -427,7 +502,7 @@ body {
 .chart-card .chart-title {
   font-size: clamp(1rem, 1vw, 1.2rem);
   font-weight: 700;
-  color: var(--tab-active-bg);
+  color: var(--dash-heading);
   margin: 0 0 4px;
 }
 
@@ -453,12 +528,24 @@ body {
   margin: 0 auto;
 }
 
+.chart-hint {
+  margin: 0;
+  padding: 24px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* ApexCharts в тёмной теме по умолчанию рисует свой серый «холст» — совпадаем с фоном карточки */
+html[data-theme="dark"] .apexcharts-svg .apexcharts-background {
+  fill: var(--brand-card);
+}
+
 .chart-box--image {
   min-height: clamp(220px, 35vw, 280px);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
+  background: var(--brand-card);
   border: 0;
   border-radius: 0;
   overflow: hidden;
@@ -563,7 +650,7 @@ th {
 }
 
 tbody tr:hover {
-  background: #f8fafc;
+  background: var(--surface-subtle);
 }
 
 .footer-note {
@@ -586,21 +673,21 @@ tbody tr:hover {
   box-sizing: border-box;
   z-index: 0;
   min-height: auto;
-  background: #ffffff;
+  background: var(--brand-card);
 }
 
 .ai-panel h2 {
   margin: 0;
   font-size: 1.32rem;
   font-weight: 700;
-  color: var(--tab-active-bg);
+  color: var(--dash-heading);
 }
 
 .ai-panel .ai-desc {
   margin: 0;
   font-size: 0.86rem;
   line-height: 1.35;
-  color: #334155;
+  color: var(--muted);
 }
 
 .ai-panel .ai-hint {
@@ -640,18 +727,18 @@ tbody tr:hover {
   padding: 6px;
   border: var(--control-border);
   border-radius: var(--control-radius);
-  background: #fbfefc;
+  background: var(--surface-subtle);
 }
 
 .bubble {
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid var(--border);
-  background: #f8fafc;
+  background: var(--surface-subtle);
 }
 
 .bubble.ai {
-  background: #fff;
+  background: var(--brand-card);
   border-left: 3px solid var(--brand-accent);
 }
 
@@ -682,7 +769,8 @@ tbody tr:hover {
   min-height: 96px;
   max-height: 140px;
   resize: vertical;
-  background: var(--control-bg);
+  background: var(--surface-subtle);
+  color: var(--brand-text);
 }
 
 .ai-input-row button {
@@ -736,12 +824,12 @@ tbody tr:hover {
 }
 
 .ai-mode-btn.active {
-  background: var(--tab-active-bg);
-  color: #fff;
+  background: var(--control-bg-active);
+  color: var(--control-text-active);
 }
 
 .ai-mode-btn:not(.active):hover {
-  background: #f1f5f9;
+  background: var(--surface-subtle);
 }
 
 /* ── AI Artifacts (sidebar) ── */
@@ -759,7 +847,7 @@ tbody tr:hover {
 .ai-artifact-card {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: #fff;
+  background: var(--brand-card);
   padding: 10px 12px;
 }
 
@@ -798,14 +886,14 @@ tbody tr:hover {
 .ai-artifact-table td {
   padding: 4px 8px;
   text-align: left;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .ai-artifact-table th {
   font-weight: 600;
   color: var(--muted);
-  background: #f8fafc;
+  background: var(--surface-subtle);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -1007,7 +1095,7 @@ tbody tr:hover {
 .diag-summary-card .chart-title {
   font-size: clamp(1rem, 1vw, 1.2rem);
   font-weight: 700;
-  color: var(--tab-active-bg);
+  color: var(--dash-heading);
   margin: 0 0 4px;
 }
 
@@ -1055,7 +1143,8 @@ tbody tr:hover {
 .diag-summary-value {
   font-size: 1.6rem;
   font-weight: 700;
-  color: var(--tab-active-bg);
+  /* Крупные цифры на пастельных плашках: в тёмной теме --tab-active-bg светлый — контраст пропадает */
+  color: #0f172a;
   line-height: 1.1;
 }
 
@@ -1064,13 +1153,13 @@ tbody tr:hover {
   margin-bottom: 14px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: #fafbfc;
+  background: var(--surface-subtle);
 }
 
 .diag-legend-title {
   font-size: 0.92rem;
   font-weight: 700;
-  color: var(--tab-active-bg);
+  color: var(--dash-heading);
   margin: 0 0 10px;
 }
 
@@ -1095,7 +1184,7 @@ tbody tr:hover {
 
 .diag-legend-foot code {
   font-size: 0.8em;
-  background: #f1f5f9;
+  background: var(--control-bg);
   padding: 1px 5px;
   border-radius: 4px;
 }
@@ -1270,7 +1359,7 @@ tbody tr:hover {
 
 .diag-card--insufficient_data {
   border-left-color: #94a3b8;
-  background: #f8fafc;
+  background: var(--surface-subtle);
 }
 
 .diag-card-head {
@@ -1462,6 +1551,98 @@ tbody tr:hover {
   min-height: 200px;
 }
 
+/* Тёмная тема: диагностики — KPI и бейджи в тон карточкам, без пастельных «светлых блоков» */
+html[data-theme="dark"] .diag-summary-cell {
+  background: rgba(51, 65, 85, 0.42);
+  border-color: var(--border);
+}
+
+html[data-theme="dark"] .diag-summary-cell--triggered {
+  /* Чистый тёплый оранж (без «грязного» brown/orange-700) */
+  background: rgba(249, 115, 22, 0.16);
+  border-color: rgba(253, 186, 116, 0.48);
+}
+
+html[data-theme="dark"] .diag-summary-cell--insufficient {
+  background: rgba(71, 85, 105, 0.38);
+  border-color: var(--border);
+}
+
+html[data-theme="dark"] .diag-summary-cell--total {
+  background: rgba(22, 101, 52, 0.32);
+  border-color: rgba(34, 197, 94, 0.38);
+}
+
+html[data-theme="dark"] .diag-summary-value {
+  color: var(--dash-heading);
+}
+
+html[data-theme="dark"] .diag-chip--triggered {
+  background: rgba(249, 115, 22, 0.2);
+  color: #ffedd5;
+  border-color: rgba(253, 186, 116, 0.5);
+}
+
+html[data-theme="dark"] .diag-chip--ok {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+html[data-theme="dark"] .diag-chip--insufficient {
+  background: rgba(148, 163, 184, 0.18);
+  color: #cbd5e1;
+  border-color: rgba(148, 163, 184, 0.4);
+}
+
+html[data-theme="dark"] .diag-card-basis {
+  color: #fdba74;
+}
+
+html[data-theme="dark"] .diag-confidence--high {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+html[data-theme="dark"] .diag-confidence--medium {
+  background: rgba(56, 189, 248, 0.14);
+  color: #7dd3fc;
+  border-color: rgba(56, 189, 248, 0.38);
+}
+
+html[data-theme="dark"] .diag-confidence--low {
+  background: rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
+  border-color: rgba(148, 163, 184, 0.38);
+}
+
+html[data-theme="dark"] .diag-badge--triggered {
+  background: rgba(249, 115, 22, 0.22);
+  color: #ffedd5;
+  border-color: rgba(253, 186, 116, 0.5);
+}
+
+html[data-theme="dark"] .diag-badge--not_triggered {
+  background: rgba(34, 197, 94, 0.16);
+  color: #bbf7d0;
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+html[data-theme="dark"] .diag-badge--insufficient_data {
+  background: rgba(148, 163, 184, 0.18);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.4);
+}
+
+html[data-theme="dark"] .diag-evidence-title {
+  color: var(--dash-heading);
+}
+
+html[data-theme="dark"] .diag-card--triggered {
+  border-left-color: #fb923c;
+}
+
 /* ── Отчёт ТОиР ─────────────────────────────────── */
 
 .report-layout {
@@ -1602,7 +1783,7 @@ tbody tr:hover {
   margin: 0;
   font-size: clamp(1.12rem, 0.95rem + 0.45vw, 1.35rem);
   font-weight: 700;
-  color: var(--tab-active-bg);
+  color: var(--dash-heading);
   letter-spacing: -0.02em;
   line-height: 1.2;
 }
@@ -1695,18 +1876,18 @@ tbody tr:hover {
   border: 1px solid var(--border);
   border-radius: 10px;
   cursor: pointer;
-  background: #ffffff;
+  background: var(--surface-subtle);
   transition: background 0.12s, border-color 0.12s;
 }
 
 .report-list-item:hover {
   border-color: var(--brand-accent);
-  background: #f0fdf4;
+  background: var(--report-list-hover-bg);
 }
 
 .report-list-item.is-active {
   border-color: var(--brand-accent);
-  background: #ecfdf5;
+  background: var(--report-list-active-bg);
 }
 
 .report-list-title {
@@ -1819,8 +2000,8 @@ tbody tr:hover {
 
 .report-welcome-workzone {
   margin-top: 14px;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px 14px 14px;
 }
@@ -1890,7 +2071,7 @@ tbody tr:hover {
 }
 
 .report-welcome-lead code {
-  background: #f1f5f9;
+  background: var(--surface-subtle);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.88em;
@@ -1918,7 +2099,7 @@ tbody tr:hover {
 .report-welcome-steps--slice .report-slice-row + .report-slice-row {
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--border);
 }
 
 .report-welcome-steps--slice .report-slice-label {
@@ -1961,7 +2142,7 @@ tbody tr:hover {
   color: var(--muted);
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--brand-card);
 }
 
 .report-welcome-steps li {
@@ -1991,7 +2172,7 @@ tbody tr:hover {
 }
 
 .report-empty code {
-  background: #f1f5f9;
+  background: var(--surface-subtle);
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -2014,7 +2195,7 @@ tbody tr:hover {
   margin: 0;
   font-size: clamp(1.15rem, 1rem + 1.1vw, 1.85rem);
   font-weight: 700;
-  color: #0f172a;
+  color: var(--dash-heading);
   line-height: 1.2;
   letter-spacing: -0.02em;
   word-break: break-word;
@@ -2022,7 +2203,7 @@ tbody tr:hover {
 
 .report-doc-hero {
   text-align: left;
-  background: #ffffff;
+  background: var(--brand-card);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 18px 20px 16px;
@@ -2052,7 +2233,7 @@ tbody tr:hover {
   font-family: var(--font);
   font-size: clamp(1.35rem, 1.1rem + 1vw, 1.65rem);
   font-weight: 700;
-  color: #0f172a;
+  color: var(--dash-heading);
   letter-spacing: -0.02em;
   line-height: 1.05;
   display: inline-flex;
@@ -2064,7 +2245,7 @@ tbody tr:hover {
   margin: 0 0 8px;
   font-size: clamp(1.15rem, 1rem + 1.1vw, 1.5rem);
   font-weight: 700;
-  color: #0f172a;
+  color: var(--dash-heading);
   line-height: 1.2;
   letter-spacing: -0.02em;
   word-break: break-word;
@@ -2090,19 +2271,19 @@ tbody tr:hover {
   align-items: center;
   font-size: 0.82rem;
   font-weight: 500;
-  color: #334155;
+  color: var(--brand-text);
   padding: 6px 12px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: #fff;
+  background: var(--control-bg);
   line-height: 1.3;
   transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
 .report-doc-chip:hover {
-  background: #ecfdf5;
-  border-color: #22c55e;
-  color: #065f46;
+  background: var(--report-list-hover-bg);
+  border-color: var(--brand-accent);
+  color: var(--control-text);
 }
 
 .report-doc-toolbar {
@@ -2115,7 +2296,7 @@ tbody tr:hover {
   align-items: center;
   max-width: 100%;
   padding: 10px 12px;
-  background: #f8fafc;
+  background: var(--surface-subtle);
   border: 1px solid var(--border);
   border-radius: 10px;
   box-sizing: border-box;
@@ -2208,9 +2389,9 @@ tbody tr:hover {
 
 .btn-report-toolbar:disabled {
   opacity: 1;
-  border-color: #cbd5e1;
-  background: #f8fafc;
-  color: #64748b;
+  border-color: var(--border);
+  background: var(--surface-subtle);
+  color: var(--muted);
   cursor: not-allowed;
 }
 
@@ -2313,7 +2494,7 @@ tbody tr:hover {
   margin: 0;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--brand-card);
   box-shadow: var(--shadow);
 }
 
@@ -2331,17 +2512,17 @@ tbody tr:hover {
   font-size: 0.88rem;
   font-weight: 500;
   cursor: pointer;
-  color: #0f172a;
+  color: var(--brand-text);
   transition: background 0.1s ease;
 }
 
 .report-export-menu-item:hover {
-  background: #f0fdf4;
+  background: var(--report-list-hover-bg);
 }
 
 .report-export-menu-item:focus-visible {
   outline: none;
-  background: #ecfdf5;
+  background: var(--report-list-active-bg);
   box-shadow: inset 0 0 0 2px rgba(34, 197, 94, 0.35);
 }
 
@@ -2354,7 +2535,7 @@ tbody tr:hover {
 .report-section {
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--brand-card);
   padding: 14px 16px;
   border-left: 4px solid #94a3b8;
 }
@@ -2372,7 +2553,7 @@ tbody tr:hover {
 }
 
 .report-section--mandatory {
-  background: #f8fafc;
+  background: var(--surface-subtle);
   border-left-color: #16a34a;
 }
 
@@ -2388,7 +2569,7 @@ tbody tr:hover {
   margin: 0;
   font-size: 1.05rem;
   font-weight: 700;
-  color: var(--tab-active-bg);
+  color: var(--dash-heading);
 }
 
 .report-section-meta {
@@ -2430,6 +2611,25 @@ tbody tr:hover {
   border-color: #e2e8f0;
 }
 
+html[data-theme="dark"] .report-section-badge--mandatory,
+html[data-theme="dark"] .report-section-badge--confidence-high {
+  background: rgba(34, 197, 94, 0.1);
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.28);
+}
+
+html[data-theme="dark"] .report-section-badge--confidence-medium {
+  background: rgba(249, 115, 22, 0.1);
+  color: #fdba74;
+  border-color: rgba(253, 186, 116, 0.32);
+}
+
+html[data-theme="dark"] .report-section-badge--confidence-low {
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
 .report-section-body {
   font-size: 0.96rem;
   line-height: 1.55;
@@ -2444,7 +2644,7 @@ tbody tr:hover {
 .report-section-body h3,
 .report-section-body h4 {
   margin: 12px 0 6px;
-  color: var(--tab-active-bg);
+  color: var(--dash-heading);
 }
 
 .report-section-body ul {
@@ -2484,11 +2684,11 @@ tbody tr:hover {
 }
 
 .report-section-ref {
-  background: #f1f5f9;
+  background: var(--surface-subtle);
   border-radius: 6px;
   padding: 2px 8px;
   font-size: 0.8rem;
-  color: #334155;
+  color: var(--brand-text);
   font-family: monospace;
 }
 
@@ -2501,15 +2701,28 @@ tbody tr:hover {
   border-radius: 6px;
 }
 
+html[data-theme="dark"] .report-section-warnings {
+  background: rgba(245, 158, 11, 0.14);
+  border-left-color: #fbbf24;
+}
+
 .report-section-warnings-title {
   font-weight: 600;
   color: #92400e;
   margin-bottom: 4px;
 }
 
+html[data-theme="dark"] .report-section-warnings-title {
+  color: #fcd34d;
+}
+
 .report-section-warning {
   color: #78350f;
   margin-bottom: 2px;
+}
+
+html[data-theme="dark"] .report-section-warning {
+  color: #fde68a;
 }
 
 .report-section-controls {
@@ -2545,13 +2758,13 @@ tbody tr:hover {
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: #f8fafc;
+  background: var(--surface-subtle);
 }
 
 .report-doc-ai h3 {
   margin: 0 0 6px;
   font-size: 1rem;
-  color: var(--tab-active-bg);
+  color: var(--dash-heading);
 }
 
 .report-doc-ai-hint {
@@ -2570,7 +2783,8 @@ tbody tr:hover {
   border-radius: 8px;
   font-family: inherit;
   font-size: 0.94rem;
-  background: #ffffff;
+  background: var(--control-bg);
+  color: var(--brand-text);
 }
 
 .report-doc-ai-actions {
@@ -2606,7 +2820,7 @@ tbody tr:hover {
   cursor: pointer;
   font-weight: 600;
   font-size: 0.9rem;
-  color: var(--tab-active-bg);
+  color: var(--dash-heading);
   user-select: none;
 }
 
@@ -2618,10 +2832,10 @@ tbody tr:hover {
 
 .report-rev-id {
   font-family: monospace;
-  background: #f1f5f9;
+  background: var(--surface-subtle);
   padding: 1px 6px;
   border-radius: 4px;
-  color: #334155;
+  color: var(--brand-text);
 }
 
 .report-rev-summary {
@@ -2643,9 +2857,10 @@ tbody tr:hover {
 }
 
 .report-modal {
-  background: #ffffff;
+  background: var(--brand-card);
+  color: var(--brand-text);
   border-radius: 12px;
-  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.25);
+  box-shadow: var(--shadow);
   max-width: 720px;
   width: 100%;
   max-height: 90vh;
@@ -2709,7 +2924,7 @@ tbody tr:hover {
   padding: 6px 10px;
   font-size: 0.94rem;
   font-family: inherit;
-  background: #ffffff;
+  background: var(--control-bg);
   color: var(--brand-text);
 }
 
@@ -2725,7 +2940,7 @@ tbody tr:hover {
   gap: 8px;
   padding: 10px 16px;
   border-top: 1px solid var(--border);
-  background: #f8fafc;
+  background: var(--surface-subtle);
 }
 
 .report-modal-cancel {
@@ -2753,9 +2968,10 @@ tbody tr:hover {
 .report-preview-instruction {
   margin-bottom: 12px;
   padding: 8px 12px;
-  background: #f1f5f9;
+  background: var(--surface-subtle);
   border-radius: 8px;
   font-size: 0.88rem;
+  color: var(--brand-text);
 }
 
 .report-preview-warnings {
@@ -2770,6 +2986,12 @@ tbody tr:hover {
   border-radius: 6px;
   font-size: 0.86rem;
   margin-bottom: 4px;
+}
+
+html[data-theme="dark"] .report-preview-warning {
+  background: rgba(245, 158, 11, 0.14);
+  color: #fde68a;
+  border-left-color: #fbbf24;
 }
 
 .report-preview-ops {
@@ -2798,10 +3020,16 @@ tbody tr:hover {
   border: 1px dashed var(--border);
   border-radius: 8px;
   padding: 10px 12px;
-  background: #fafafa;
+  background: var(--report-preview-bg);
+}
+
+.report-preview-section--changed {
+  border-style: solid;
+  border-color: var(--brand-accent);
+  background: var(--report-preview-changed-bg);
 }
 
 .report-preview-section h4 {
   margin: 0 0 6px;
-  color: var(--tab-active-bg);
+  color: var(--dash-heading);
 }
