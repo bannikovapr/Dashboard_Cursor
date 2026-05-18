@@ -125,6 +125,38 @@
     return new Set(allMonthKeys);
   }
 
+  function clampNumber(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function getChartHeight(targetSel, options = {}) {
+    const {
+      fallback = 260,
+      min = 200,
+      max = 460,
+      ratio = 0.52,
+      items = 0,
+      perItem = 0,
+      basePad = 100,
+      useBoxHeight = false,
+    } = options;
+    const target = targetSel ? document.querySelector(targetSel) : null;
+    const width = target ? Math.round(target.getBoundingClientRect().width || target.clientWidth || 0) : 0;
+    const boxHeight = target ? Math.round(target.getBoundingClientRect().height || target.clientHeight || 0) : 0;
+    const fromWidth = width > 0 ? Math.round(width * ratio) : fallback;
+    const fromItems = items > 0 && perItem > 0 ? Math.round(items * perItem + basePad) : 0;
+    const fromBox = useBoxHeight && boxHeight > 0 ? boxHeight : 0;
+    const next = Math.max(fallback, fromWidth, fromItems, fromBox);
+    return Math.round(clampNumber(next, min, max));
+  }
+
+  function getSeriesPointCount(chartSpec) {
+    const categoriesCount = Array.isArray(chartSpec?.categories) ? chartSpec.categories.length : 0;
+    if (categoriesCount > 0) return categoriesCount;
+    const firstSeries = Array.isArray(chartSpec?.series) ? chartSpec.series[0] : null;
+    return Array.isArray(firstSeries?.data) ? firstSeries.data.length : 0;
+  }
+
   function buildEquipmentRows(data, monthSet, classNameFilter) {
     const costs = data.tables.equipmentCosts || {};
     const ktgMap = data.tables.ktg || {};
@@ -390,7 +422,17 @@
     const chartBox = document.getElementById("chartPersonnelDlp");
     if (chartBox) {
       if (payload?.chart && typeof Charts?.renderAgentChart === "function") {
-        Charts.renderAgentChart(payload.chart, "#chartPersonnelDlp", 420);
+        const points = getSeriesPointCount(payload.chart);
+        const personnelHeight = getChartHeight("#chartPersonnelDlp", {
+          fallback: 320,
+          min: 260,
+          max: 440,
+          ratio: 0.56,
+          items: points,
+          perItem: 20,
+          basePad: 96,
+        });
+        Charts.renderAgentChart(payload.chart, "#chartPersonnelDlp", personnelHeight);
       } else {
         chartBox.textContent = "В data/toir.json нет блока personnelUsage или нет данных для графика";
       }
@@ -421,7 +463,17 @@
     const chartBox = document.getElementById("chartPersonnelOrg");
     if (chartBox) {
       if (payload?.chart && typeof Charts?.renderAgentChart === "function") {
-        Charts.renderAgentChart(payload.chart, "#chartPersonnelOrg", 420);
+        const points = getSeriesPointCount(payload.chart);
+        const personnelHeight = getChartHeight("#chartPersonnelOrg", {
+          fallback: 320,
+          min: 260,
+          max: 440,
+          ratio: 0.56,
+          items: points,
+          perItem: 20,
+          basePad: 96,
+        });
+        Charts.renderAgentChart(payload.chart, "#chartPersonnelOrg", personnelHeight);
       } else {
         chartBox.textContent = "В data/toir.json нет блока personnelOrgUsage или нет данных для графика";
       }
@@ -506,7 +558,13 @@
           ? `Отчёт «Список оборудования» · столбец «Процент использования» · всего ${units} ед. с числом`
           : 'Не удалось прочитать «Процент использования» — проверьте столбец в файле «Список оборудования».';
     }
-    Charts.renderEquipmentUsageDonut(labels, counts, "#chartEquipmentUsageDonut", 320);
+    const donutHeight = getChartHeight("#chartEquipmentUsageDonut", {
+      fallback: 320,
+      min: 240,
+      max: 420,
+      ratio: 0.56,
+    });
+    Charts.renderEquipmentUsageDonut(labels, counts, "#chartEquipmentUsageDonut", donutHeight);
   }
 
   function fillClassSelect(selectEl, classes, preferredValue) {
@@ -933,7 +991,17 @@
 
     const periodSel = document.getElementById("panelPeriod");
     const classSel = document.getElementById("panelClass");
+    const layoutMain = document.querySelector(".layout-main");
     let resizeTimer = null;
+
+    function queueChartsResize() {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        Charts.resizeAll();
+        clearLegacyAiSidebarInlineStyles();
+        reflowDiagnosticsIfNeeded();
+      }, 120);
+    }
 
     function resetAiSidebarSizing(sidebar) {
       if (!sidebar) return;
@@ -969,7 +1037,7 @@
     document.querySelectorAll(".tab").forEach((btn) => {
       btn.addEventListener("click", () => {
         applyTab(btn.dataset.tab);
-        Charts.resizeAll();
+        queueChartsResize();
         clearLegacyAiSidebarInlineStyles();
         if (btn.dataset.tab === "reports" && window.ToirReports && typeof window.ToirReports.onTabActivated === "function") {
           window.ToirReports.onTabActivated();
@@ -977,14 +1045,13 @@
       });
     });
 
-    window.addEventListener("resize", () => {
-      if (resizeTimer) clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => {
-        Charts.resizeAll();
-        clearLegacyAiSidebarInlineStyles();
-        reflowDiagnosticsIfNeeded();
-      }, 120);
-    });
+    window.addEventListener("resize", queueChartsResize);
+    if (layoutMain && typeof ResizeObserver === "function") {
+      const layoutResizeObserver = new ResizeObserver(() => {
+        queueChartsResize();
+      });
+      layoutResizeObserver.observe(layoutMain);
+    }
 
     refreshClassOptionsFromLiveData();
 
@@ -1007,40 +1074,103 @@
       const cats = agg.map((a) => a.class);
       const vals = agg.map((a) => (100 * a.qty) / totalEq);
       const structPct = vals.map((v) => Math.round(v * 10) / 10);
-      Charts.renderStructureByClass(cats, structPct, "#chartStructure", 260);
-      Charts.renderStructureByClass(cats, structPct, "#chartStructureEq", 260);
+      const structureHeight = getChartHeight("#chartStructure", {
+        fallback: 260,
+        min: 220,
+        max: 380,
+        ratio: 0.52,
+        items: cats.length,
+        perItem: 24,
+        basePad: 92,
+      });
+      const structureEqHeight = getChartHeight("#chartStructureEq", {
+        fallback: 260,
+        min: 220,
+        max: 380,
+        ratio: 0.52,
+        items: cats.length,
+        perItem: 24,
+        basePad: 92,
+      });
+      Charts.renderStructureByClass(cats, structPct, "#chartStructure", structureHeight);
+      Charts.renderStructureByClass(cats, structPct, "#chartStructureEq", structureEqHeight);
 
       const cm = ((liveData.charts && liveData.charts.costsByMonth) || []).filter((m) => monthSet.has(m.month));
       const costsMln = monthlyCostsSeriesMln(liveData, cm, cls);
       const monthLbl = cm.map((m) => shortMonthLabel(m.month));
-      Charts.renderCostsByMonth(monthLbl, costsMln, "#chartCosts", 320);
-      Charts.renderCostsByMonth(monthLbl, costsMln, "#chartCostsTab", 260);
+      const costsHeroHeight = getChartHeight("#chartCosts", {
+        fallback: 320,
+        min: 240,
+        max: 420,
+        ratio: 0.44,
+      });
+      const costsTabHeight = getChartHeight("#chartCostsTab", {
+        fallback: 300,
+        min: 250,
+        max: 420,
+        ratio: 0.54,
+      });
+      Charts.renderCostsByMonth(monthLbl, costsMln, "#chartCosts", costsHeroHeight);
+      Charts.renderCostsByMonth(monthLbl, costsMln, "#chartCostsTab", costsTabHeight);
 
       const fc = [...((liveData.charts && (liveData.charts.failure_causes || liveData.charts.failureCauses)) || [])].sort(
         (a, b) => b.count - a.count
       );
       const fcLabels = fc.map((x) => x.cause);
       const fcCounts = fc.map((x) => x.count);
-      Charts.renderFailureCauses(fcLabels, fcCounts, "#chartCauses", 260);
-      Charts.renderFailureCauses(fcLabels, fcCounts, "#chartCausesRel", 260);
+      const causesHeight = getChartHeight("#chartCauses", {
+        fallback: 260,
+        min: 240,
+        max: 440,
+        ratio: 0.5,
+        items: fcLabels.length,
+        perItem: 24,
+        basePad: 96,
+      });
+      const causesRelHeight = getChartHeight("#chartCausesRel", {
+        fallback: 260,
+        min: 240,
+        max: 440,
+        ratio: 0.5,
+        items: fcLabels.length,
+        perItem: 24,
+        basePad: 96,
+      });
+      Charts.renderFailureCauses(fcLabels, fcCounts, "#chartCauses", causesHeight);
+      Charts.renderFailureCauses(fcLabels, fcCounts, "#chartCausesRel", causesRelHeight);
 
       const topCostRows = [...rows]
         .filter((r) => r.cost > 0)
         .sort((a, b) => b.cost - a.cost)
         .slice(0, 10);
+      const topCostHeight = getChartHeight("#chartTopCostEquip", {
+        fallback: 300,
+        min: 250,
+        max: 440,
+        ratio: 0.54,
+        items: topCostRows.length,
+        perItem: 26,
+        basePad: 96,
+      });
       Charts.renderTopEquipmentCost(
         topCostRows.map((r) => r.name),
         topCostRows.map((r) => r.cost / 1e6),
         "#chartTopCostEquip",
-        280
+        topCostHeight
       );
 
       const aggByCost = [...agg].sort((a, b) => b.costs - a.costs);
+      const classDonutHeight = getChartHeight("#chartClassCostDonut", {
+        fallback: 300,
+        min: 250,
+        max: 420,
+        ratio: 0.54,
+      });
       Charts.renderClassCostDonut(
         aggByCost.map((a) => a.class),
         aggByCost.map((a) => a.costs),
         "#chartClassCostDonut",
-        280
+        classDonutHeight
       );
 
       const ktgMonthlyMap = new Map();
@@ -1063,7 +1193,12 @@
         ktgMonths.map((m) => shortMonthLabel(m)),
         ktgAvgSeries,
         "#chartKtgTrend",
-        260
+        getChartHeight("#chartKtgTrend", {
+          fallback: 260,
+          min: 220,
+          max: 340,
+          ratio: 0.5,
+        })
       );
 
       const mtbfTop = ((liveData.charts && liveData.charts.mtbfByEquipment) || [])
@@ -1073,7 +1208,15 @@
         mtbfTop.map((x) => x.equipment),
         mtbfTop.map((x) => Number(x.mtbf_h) || 0),
         "#chartMtbfTop",
-        260
+        getChartHeight("#chartMtbfTop", {
+          fallback: 260,
+          min: 240,
+          max: 440,
+          ratio: 0.52,
+          items: mtbfTop.length,
+          perItem: 24,
+          basePad: 96,
+        })
       );
       const mttrTop = ((liveData.charts && liveData.charts.mttrByEquipment) || [])
         .filter((x) => cls === "__all__" || equipmentClassFromData(liveData, x.equipment) === cls)
@@ -1082,7 +1225,15 @@
         mttrTop.map((x) => x.equipment),
         mttrTop.map((x) => Number(x.mttr_h) || 0),
         "#chartMttrTop",
-        260
+        getChartHeight("#chartMttrTop", {
+          fallback: 260,
+          min: 240,
+          max: 440,
+          ratio: 0.52,
+          items: mttrTop.length,
+          perItem: 24,
+          basePad: 96,
+        })
       );
       const mlRows = ((liveData.charts && liveData.charts.materialLaborByMonth) || []).filter((m) =>
         monthSet.has(m.month)
@@ -1092,14 +1243,24 @@
         mlRows.map((m) => Number(m.material_rub || m.material || m.material_h || 0)),
         mlRows.map((m) => Number(m.labor_h || m.labor || 0)),
         "#chartMaterialLabor",
-        260
+        getChartHeight("#chartMaterialLabor", {
+          fallback: 300,
+          min: 250,
+          max: 420,
+          ratio: 0.54,
+        })
       );
 
       Charts.renderClassCostsBar(
         aggByCost.map((a) => a.class),
         aggByCost.map((a) => a.costs / 1e6),
         "#chartClassCostsBar",
-        260
+        getChartHeight("#chartClassCostsBar", {
+          fallback: 260,
+          min: 230,
+          max: 340,
+          ratio: 0.5,
+        })
       );
 
       const monthShort = cm.map((m) => m.month);

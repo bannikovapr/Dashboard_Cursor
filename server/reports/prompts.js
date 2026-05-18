@@ -95,6 +95,10 @@ const REPORT_EDIT_SYSTEM_PROMPT = [
     "и указывай evidence_refs, включающие \"personnel_summary\".",
   "- Для отдельного раздела по подразделениям используй section_id \"personnel_by_department\" " +
     "(insert_section_after с new_section_id или replace_section существующей секции с этим id).",
+  "- Для replace_section, delete_section, move_section поле section_id должно в точности совпадать " +
+    "с document.sections[].section_id (например executive_summary, costs_and_trend, reliability). " +
+    "НЕ подставляйте туда русский заголовок — но если ошиблись, сервер сопоставит заголовок с секцией.",
+  "- Поля sectionId, target_section_id, afterSectionId распознаются, но предпочтительны snake_case как в примерах.",
   "- Секцию data_limitations (обязательную) не удаляй; при запросе «убери ограничения» упрости текст и при необходимости обнови warnings.",
   "- Все тексты на русском языке.",
 ].join("\n");

@@ -31,6 +31,36 @@ function catalogEntry(sectionId) {
   return config.REPORT_SECTION_CATALOG.find((entry) => entry.id === sectionId) || null;
 }
 
+/** Сопоставить подсказку модели с section_id: точный id, затем точное совпадение с текущим title секции. */
+function resolveSectionReference(sections, rawHint) {
+  if (rawHint == null) return null;
+  const hint = String(rawHint).trim();
+  if (!hint) return null;
+  const list = Array.isArray(sections) ? sections : [];
+  if (list.some((s) => s.section_id === hint)) return hint;
+  const low = hint.toLowerCase();
+  for (const s of list) {
+    if (String(s.title || "").trim().toLowerCase() === low) return s.section_id;
+  }
+  return null;
+}
+
+function pickSectionIdField(item) {
+  if (!item || typeof item !== "object") return "";
+  const v =
+    item.section_id ??
+    item.sectionId ??
+    item.target_section_id ??
+    item.targetSectionId;
+  return v != null ? String(v).trim() : "";
+}
+
+function pickAfterSectionIdField(item) {
+  if (!item || typeof item !== "object") return "";
+  const v = item.after_section_id ?? item.afterSectionId ?? item.anchor_section_id ?? item.anchorSectionId;
+  return v != null ? String(v).trim() : "";
+}
+
 function ensureSection(rawSection) {
   const entry = catalogEntry(rawSection && rawSection.section_id);
   return schemas.makeSection({
@@ -183,8 +213,9 @@ function applyOperations(title, sections, operations) {
       continue;
     }
     if (type === "delete_section") {
-      const sid = op.section_id;
-      if (!sid) throw new Error("delete_section: нет section_id.");
+      const sidRaw = op.section_id != null ? String(op.section_id).trim() : "";
+      const sid = resolveSectionReference(list, sidRaw);
+      if (!sid) throw new Error("delete_section: не удалось сопоставить section_id.");
       if (config.REPORT_MANDATORY_SECTION_IDS.includes(sid)) {
         throw new Error(`Нельзя удалить обязательную секцию: ${sid}`);
       }
@@ -193,7 +224,10 @@ function applyOperations(title, sections, operations) {
       continue;
     }
     if (type === "replace_section") {
-      const idx = list.findIndex((s) => s.section_id === op.section_id);
+      const sidRaw = op.section_id != null ? String(op.section_id).trim() : "";
+      const resolvedSid = resolveSectionReference(list, sidRaw);
+      if (!resolvedSid) continue;
+      const idx = list.findIndex((s) => s.section_id === resolvedSid);
       if (idx < 0) continue;
       const s = list[idx];
       const rawOp = raw && typeof raw === "object" ? raw : {};
@@ -212,6 +246,9 @@ function applyOperations(title, sections, operations) {
       continue;
     }
     if (type === "insert_section_after") {
+      const rawAfter = op.after_section_id != null ? String(op.after_section_id).trim() : "";
+      const resolvedAfter = rawAfter ? resolveSectionReference(list, rawAfter) : "";
+      if (rawAfter && resolvedAfter) op.after_section_id = resolvedAfter;
       const sid = op.new_section_id || op.section_id;
       if (!sid) throw new Error("insert_section_after: не указан идентификатор секции.");
       const entry = catalogEntry(sid);
@@ -237,12 +274,18 @@ function applyOperations(title, sections, operations) {
       continue;
     }
     if (type === "move_section") {
-      const idx = list.findIndex((s) => s.section_id === op.section_id);
+      const sidRaw = op.section_id != null ? String(op.section_id).trim() : "";
+      const resolvedSid = resolveSectionReference(list, sidRaw);
+      if (!resolvedSid) continue;
+      const idx = list.findIndex((s) => s.section_id === resolvedSid);
       if (idx < 0) continue;
       const [row] = list.splice(idx, 1);
       let insertAt = list.length;
       if (op.after_section_id) {
-        const j = list.findIndex((x) => x.section_id === op.after_section_id);
+        const afterRaw = String(op.after_section_id).trim();
+        const afterResolved = resolveSectionReference(list, afterRaw);
+        const anchor = afterResolved || afterRaw;
+        const j = list.findIndex((x) => x.section_id === anchor);
         insertAt = j >= 0 ? j + 1 : list.length;
       }
       list.splice(insertAt, 0, row);
@@ -276,23 +319,71 @@ function buildFallbackEditPlan(document, instruction) {
 }
 
 function normalizeLlmOperations(document, rawList) {
-  const existingIds = new Set((document.sections || []).map((s) => s.section_id));
+  const sections = document.sections || [];
+  const existingIds = new Set(sections.map((s) => s.section_id));
   const out = [];
-  if (!Array.isArray(rawList)) return out;
+  const notes = [];
+  let resolvedByTitle = 0;
+  if (!Array.isArray(rawList)) return { operations: out, notes };
+
   for (const item of rawList) {
     if (!item || typeof item !== "object") continue;
     const type = String(item.operation_type || "").trim();
     if (!config.VALID_OPERATION_TYPES.includes(type)) continue;
     const op = Object.assign({}, item, { operation_type: type });
-    if (type === "insert_section_after") {
+
+    if (type === "replace_section" || type === "delete_section") {
+      const picked = pickSectionIdField(op);
+      const resolved = resolveSectionReference(sections, picked);
+      if (!resolved) {
+        if (picked) {
+          notes.push(`Операция ${type} пропущена: не найдена секция «${picked}» (нужен section_id из документа или точный заголовок секции).`);
+        }
+        continue;
+      }
+      if (picked !== resolved) resolvedByTitle += 1;
+      op.section_id = resolved;
+    } else if (type === "move_section") {
+      const picked = pickSectionIdField(op);
+      const resolved = resolveSectionReference(sections, picked);
+      if (!resolved) {
+        if (picked) notes.push(`Операция move_section пропущена: не найдена секция «${picked}».`);
+        continue;
+      }
+      if (picked !== resolved) resolvedByTitle += 1;
+      op.section_id = resolved;
+      const anchorPick = pickAfterSectionIdField(op);
+      if (anchorPick) {
+        const ra = resolveSectionReference(sections, anchorPick);
+        if (ra) {
+          op.after_section_id = ra;
+          if (anchorPick !== ra) resolvedByTitle += 1;
+        }
+      }
+    } else if (type === "insert_section_after") {
       if (!op.new_section_id && op.section_id && !existingIds.has(String(op.section_id))) {
         op.new_section_id = String(op.section_id);
         op.section_id = null;
       }
+      const anchorPick = pickAfterSectionIdField(op);
+      if (anchorPick) {
+        const ra = resolveSectionReference(sections, anchorPick);
+        if (ra) {
+          op.after_section_id = ra;
+          if (anchorPick !== ra) resolvedByTitle += 1;
+        }
+      }
     }
+
     out.push(op);
   }
-  return out;
+
+  if (resolvedByTitle > 0) {
+    notes.unshift(
+      `Модель указала подписи секций вместо внутренних id — сопоставлено операций: ${resolvedByTitle}. Для стабильности используйте section_id из document.sections (например costs_and_trend).`
+    );
+  }
+  return { operations: out, notes };
 }
 
 function tryPreview(document, operations) {
@@ -328,8 +419,11 @@ async function planEdit(reportId, instruction, options) {
       const llm = await sendOpenRouterJsonMessages({ messages, requestId });
       if (llm.ok && llm.parsed && Array.isArray(llm.parsed.operations)) {
         const normalized = normalizeLlmOperations(document, llm.parsed.operations);
-        if (normalized.length) {
-          operations = normalized;
+        for (const n of normalized.notes || []) {
+          if (warnings.indexOf(n) === -1) warnings.push(n);
+        }
+        if (normalized.operations.length) {
+          operations = normalized.operations;
           used_fallback = false;
           llmMeta = { providerModel: llm.providerModel || null, latencyMs: llm.latencyMs || null };
         }

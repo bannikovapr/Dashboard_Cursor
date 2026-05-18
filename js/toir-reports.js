@@ -296,7 +296,6 @@
                   <div class="report-toolbar-cluster report-toolbar-cluster--welcome">
                     <div class="report-doc-actions report-doc-actions--welcome" role="toolbar" aria-label="Действия с последним отчётом">
                       <button type="button" id="reportWelcomeEditTitle" class="btn-report-toolbar btn-report-toolbar--pill" title="Изменить заголовок">Заголовок</button>
-                      <button type="button" id="reportWelcomeRefreshIcon" class="btn-report-toolbar btn-report-toolbar--icon" title="Обновить список отчётов" aria-label="Обновить список отчётов">↻</button>
                       <button type="button" id="reportWelcomeUndo" class="btn-report-toolbar btn-report-toolbar--pill" disabled>↶ Откатить</button>
                       <details class="report-export-dropdown" id="reportWelcomeExportDropdown">
                         <summary class="report-export-summary" aria-label="Выгрузить отчёт">Выгрузить отчёт <span class="report-export-caret" aria-hidden="true">▼</span></summary>
@@ -307,6 +306,7 @@
                           <button type="button" class="report-export-menu-item" data-export="print" id="reportWelcomePrint">Печать…</button>
                         </div>
                       </details>
+                      <button type="button" id="reportWelcomeRefreshIcon" class="btn-report-toolbar btn-report-toolbar--icon" title="Обновить список отчётов" aria-label="Обновить список отчётов">↻</button>
                     </div>
                   </div>
                   <div class="report-welcome-steps report-welcome-steps--slice" aria-label="Текущий срез дашборда">
@@ -520,7 +520,6 @@
         <div class="report-toolbar-cluster">
           <div class="report-doc-actions" role="toolbar" aria-label="Действия с документом">
             <button type="button" id="reportEditTitle" class="btn-report-toolbar btn-report-toolbar--pill" title="Изменить заголовок">Заголовок</button>
-            <button type="button" id="reportRefresh" class="btn-report-toolbar btn-report-toolbar--icon" title="Обновить снимок по новым данным" aria-label="Обновить снимок по новым данным">↻</button>
             <button type="button" id="reportUndo" class="btn-report-toolbar btn-report-toolbar--pill" ${undoDisabled ? "disabled" : ""}>↶ Откатить</button>
             <details class="report-export-dropdown" id="reportExportDropdown">
               <summary class="report-export-summary" aria-label="Выгрузить отчёт">Выгрузить отчёт <span class="report-export-caret" aria-hidden="true">▼</span></summary>
@@ -531,6 +530,7 @@
                 <button type="button" role="menuitem" id="reportPrint" class="report-export-menu-item" data-export="print">Печать…</button>
               </div>
             </details>
+            <button type="button" id="reportRefresh" class="btn-report-toolbar btn-report-toolbar--icon" title="Обновить снимок по новым данным" aria-label="Обновить снимок по новым данным">↻</button>
           </div>
         </div>
       </div>

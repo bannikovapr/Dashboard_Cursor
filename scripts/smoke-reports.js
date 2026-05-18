@@ -181,7 +181,28 @@ const facts = require("../server/reports/facts");
     createdIds.length = 0;
     pass("filter h1 reflects in snapshot.period and months_count");
 
-    // 15) Path traversal protection in storage
+    // 15) replace_section: модель может передать русский заголовок вместо section_id
+    const titleMatchReport = await service.createReport({ filters: { period: "all", class: "__all__" } });
+    createdIds.push(titleMatchReport.report_id);
+    const tplTitle = "Затраты ТОиР: масштаб и динамика";
+    const sectionsClone = schemas.cloneSections(titleMatchReport.sections);
+    service.applyOperations(titleMatchReport.title, sectionsClone, [
+      {
+        operation_type: "replace_section",
+        section_id: tplTitle,
+        title: `Тест ${tplTitle}`,
+      },
+    ]);
+    const costAfter = sectionsClone.find((s) => s.section_id === "costs_and_trend");
+    assert(
+      costAfter && String(costAfter.title || "").startsWith("Тест "),
+      "replace_section must resolve human-readable title to section_id"
+    );
+    service.deleteReport(titleMatchReport.report_id);
+    createdIds.length = 0;
+    pass("applyOperations resolves section_id from current section title");
+
+    // 16) Path traversal protection in storage
     let pathRejected = false;
     try {
       storage.loadDocument("../etc/passwd");
