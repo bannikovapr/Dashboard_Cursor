@@ -29,15 +29,23 @@
   async function api(path, options) {
     const url = `${getApiBase()}${path || ""}`;
     const opts = options || {};
+    const headers = Object.assign(
+      { Accept: "application/json" },
+      opts.body ? { "Content-Type": "application/json" } : {},
+      root.ToirDashboardAuth && typeof root.ToirDashboardAuth.authHeaders === "function"
+        ? root.ToirDashboardAuth.authHeaders()
+        : {}
+    );
     const init = {
       method: opts.method || "GET",
-      headers: Object.assign(
-        { Accept: "application/json" },
-        opts.body ? { "Content-Type": "application/json" } : {}
-      ),
+      headers,
     };
     if (opts.body) init.body = JSON.stringify(opts.body);
-    const response = await fetch(url, init);
+    const fetchFn =
+      root.ToirDashboardAuth && typeof root.ToirDashboardAuth.apiFetch === "function"
+        ? root.ToirDashboardAuth.apiFetch.bind(root.ToirDashboardAuth)
+        : fetch;
+    const response = await fetchFn(url, init);
     let payload = null;
     try {
       payload = await response.json();
@@ -631,11 +639,22 @@
   async function downloadFromApi(url, filename) {
     let response;
     try {
-      response = await fetch(url, {
+      const headers = Object.assign(
+        { Accept: "*/*" },
+        root.ToirDashboardAuth && typeof root.ToirDashboardAuth.authHeaders === "function"
+          ? root.ToirDashboardAuth.authHeaders()
+          : {}
+      );
+      const fetchFn =
+        root.ToirDashboardAuth && typeof root.ToirDashboardAuth.apiFetch === "function"
+          ? root.ToirDashboardAuth.apiFetch.bind(root.ToirDashboardAuth)
+          : fetch;
+      response = await fetchFn(url, {
         method: "GET",
         mode: "cors",
         credentials: "omit",
         cache: "no-store",
+        headers,
       });
     } catch (e) {
       const base = "Сеть: запрос к API не выполнен.";

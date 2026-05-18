@@ -14,6 +14,7 @@
     "smoke:filter-trace": "node scripts/smoke-filter-trace.js",
     "smoke:reports": "node scripts/smoke-reports.js",
     "smoke:diagnostics": "node scripts/smoke-diagnostics.js",
+    "smoke:dashboard-auth": "node scripts/smoke-dashboard-auth.js",
     "smoke:security-suite": "node scripts/smoke-security-suite.js",
     "smoke:failclosed-api": "node scripts/smoke-failclosed-api.js",
     "bench:ml-detector": "node scripts/bench-ml-detector.js",
@@ -22,7 +23,7 @@
     "hygiene:check": "node scripts/hygiene-check.js",
     "hygiene:staged": "node scripts/hygiene-check.js --staged",
     "hooks:install": "node scripts/install-git-hooks.js",
-    "ci:hygiene": "npm run hygiene:check && npm run smoke:agent-dlp && npm run smoke:hardening && npm run smoke:forecast && npm run smoke:personnel && npm run smoke:filter-trace && npm run smoke:security-suite && npm run smoke:failclosed-api",
+    "ci:hygiene": "npm run hygiene:check && npm run smoke:agent-dlp && npm run smoke:hardening && npm run smoke:forecast && npm run smoke:personnel && npm run smoke:filter-trace && npm run smoke:dashboard-auth && npm run smoke:security-suite && npm run smoke:failclosed-api",
     "desktop": "electron desktop/main.js"
   },
   "devDependencies": {

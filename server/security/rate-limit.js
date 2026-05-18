@@ -35,6 +35,9 @@ function resolveLimit(routeId) {
     const chat = parsePositiveInt(process.env.RATE_LIMIT_CHAT_MAX, common);
     return parsePositiveInt(process.env.RATE_LIMIT_REPORT_EDIT_MAX, chat);
   }
+  if (normalized === "dashboard_auth_login") {
+    return parsePositiveInt(process.env.RATE_LIMIT_DASHBOARD_AUTH_LOGIN_MAX, 30);
+  }
   return common;
 }
 
@@ -49,6 +52,9 @@ function resolveWindowMs(routeId) {
   }
   if (normalized === "report_edit") {
     return parsePositiveInt(process.env.RATE_LIMIT_REPORT_EDIT_WINDOW_MS, common);
+  }
+  if (normalized === "dashboard_auth_login") {
+    return parsePositiveInt(process.env.RATE_LIMIT_DASHBOARD_AUTH_LOGIN_WINDOW_MS, 60 * 1000);
   }
   return common;
 }

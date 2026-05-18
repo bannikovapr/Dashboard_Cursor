@@ -16,6 +16,7 @@ const { writeTraceEvent } = require("./security/filter-trace-log");
 const { writeAgentFlowEvent } = require("./security/agent-chat-flow-log");
 const { buildSummary, parseBool, parsePositiveInt } = require("./security/log-utils");
 const detector = require("./security/detector");
+const dashboardAuth = require("./auth/dashboard-auth");
 
 const app = express();
 const API_PORT = Number(process.env.API_PORT || 8787);
@@ -51,6 +52,53 @@ app.use(
   })
 );
 app.use(express.json({ limit: "50mb" }));
+
+app.get("/api/auth/status", (_req, res) => {
+  res.json({ ok: true, enabled: dashboardAuth.isAuthEnabled() });
+});
+
+app.post("/api/auth/login", (req, res) => {
+  if (!dashboardAuth.isAuthEnabled()) {
+    return res.json({ ok: true, enabled: false, message: "Вход отключён на сервере." });
+  }
+  const hardening = evaluateHardening(req, "dashboard_auth_login");
+  applyHardeningHeaders(res, hardening);
+  if (hardening.rate?.applied && !hardening.rate?.allowed) {
+    return res.status(429).json({
+      ok: false,
+      errorCode: "rate_limited",
+      message: "Слишком много попыток входа. Повторите позже.",
+    });
+  }
+  const body = req.body || {};
+  const username = body.username != null ? String(body.username) : "";
+  const password = body.password != null ? String(body.password) : "";
+  if (!dashboardAuth.verifyCredentials(username, password)) {
+    audit("dashboard_auth_login_failed", {
+      route: "/api/auth/login",
+      usernameDigest: digestText(username),
+    });
+    return res.status(401).json({
+      ok: false,
+      errorCode: "invalid_credentials",
+      message: "Неверный логин или пароль.",
+    });
+  }
+  const token = dashboardAuth.createToken();
+  audit("dashboard_auth_login_ok", { route: "/api/auth/login" });
+  return res.json({
+    ok: true,
+    enabled: true,
+    token,
+    expiresIn: Math.floor(dashboardAuth.TOKEN_TTL_MS / 1000),
+  });
+});
+
+app.post("/api/auth/logout", (_req, res) => {
+  res.json({ ok: true });
+});
+
+app.use("/api", dashboardAuth.requireMiddleware);
 
 const reportsRouter = require("./reports/router");
 app.use("/api/reports", reportsRouter);
@@ -1021,6 +1069,13 @@ if (bootDlpKeyStatus?.ephemeral) {
       deprecationTarget: String(process.env.DLP_EPHEMERAL_DISABLE_AFTER || "next-release"),
     },
   });
+}
+
+try {
+  dashboardAuth.validateConfigAtBoot();
+} catch (e) {
+  console.error(String(e && e.message ? e.message : e));
+  process.exit(1);
 }
 
 app.listen(API_PORT, () => {

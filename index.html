@@ -34,6 +34,31 @@
     <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.54.1"></script>
   </head>
   <body>
+    <div
+      id="dashboardAuthGate"
+      class="dashboard-auth-gate"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="dashboardAuthTitle"
+    >
+      <div class="dashboard-auth-card card">
+        <h2 id="dashboardAuthTitle" class="dashboard-auth-title">Вход в дашборд</h2>
+        <p class="dashboard-auth-hint" id="dashboardAuthMsg">Укажите учётные данные.</p>
+        <form id="dashboardAuthForm" class="dashboard-auth-form">
+          <div class="dashboard-auth-field">
+            <label for="dashboardAuthUser">Логин</label>
+            <input id="dashboardAuthUser" name="username" type="text" autocomplete="username" required />
+          </div>
+          <div class="dashboard-auth-field">
+            <label for="dashboardAuthPass">Пароль</label>
+            <input id="dashboardAuthPass" name="password" type="password" autocomplete="current-password" required />
+          </div>
+          <button type="submit" class="btn-cta dashboard-auth-submit" id="dashboardAuthSubmit">Войти</button>
+        </form>
+      </div>
+    </div>
+
     <div class="layout">
       <div class="layout-main">
         <header class="card header-card dashboard-header">
@@ -66,7 +91,6 @@
             <span class="header-chip">Период: <b id="chipPeriod">12 мес.</b></span>
             <span class="header-chip">Класс: <b id="chipClass">Все классы</b></span>
             <span class="header-chip">Объектов: <b id="chipEquipCount">—</b></span>
-            <span class="header-chip">Обновлено: <b id="chipUpdated">—</b></span>
           </div>
           <div class="filters-row">
             <div class="filter-field">
@@ -370,6 +394,7 @@
 
     <script src="js/report-export-layout.js"></script>
     <script src="js/report-export-html.js"></script>
+    <script src="js/dashboard-auth-client.js"></script>
     <script src="js/toir-utils.js"></script>
     <script src="js/toir-charts.js"></script>
     <script src="js/toir-diagnostics.js"></script>

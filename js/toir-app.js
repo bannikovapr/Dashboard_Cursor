@@ -44,6 +44,12 @@
     }
   }
 
+  function dashboardApiFetch(url, init) {
+    const T = window.ToirDashboardAuth;
+    if (T && typeof T.apiFetch === "function") return T.apiFetch(url, init);
+    return fetch(url, init);
+  }
+
   const dashboardSessionId =
     typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
@@ -54,20 +60,17 @@
   function postDashboardLifecycle(phase) {
     const url = `${getDashboardApiOrigin()}/api/dashboard/lifecycle`;
     const body = JSON.stringify({ phase, surface: "web", sessionId: dashboardSessionId });
-    if (phase === "close" && typeof navigator.sendBeacon === "function") {
-      try {
-        const blob = new Blob([body], { type: "application/json" });
-        navigator.sendBeacon(url, blob);
-        return;
-      } catch (_) {
-        /* fallback fetch */
-      }
+    const headers = Object.assign(
+      { "Content-Type": "application/json", Accept: "application/json" },
+      window.ToirDashboardAuth && typeof window.ToirDashboardAuth.authHeaders === "function"
+        ? window.ToirDashboardAuth.authHeaders()
+        : {}
+    );
+    if (phase === "close") {
+      fetch(url, { method: "POST", headers, body, keepalive: true }).catch(() => {});
+      return;
     }
-    fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body,
-    }).catch(() => {});
+    dashboardApiFetch(url, { method: "POST", headers, body }).catch(() => {});
   }
 
   function isElectronRenderer() {
@@ -587,11 +590,10 @@
     selectEl.value = pick;
   }
 
-  function updateHeaderChips(data, periodValue, classValue, rows) {
+  function updateHeaderChips(periodValue, classValue, rows) {
     const periodChip = document.getElementById("chipPeriod");
     const classChip = document.getElementById("chipClass");
     const countChip = document.getElementById("chipEquipCount");
-    const updatedChip = document.getElementById("chipUpdated");
 
     const periodMap = {
       all: "Последние 12 мес.",
@@ -601,7 +603,6 @@
     if (periodChip) periodChip.textContent = periodMap[periodValue] || "Последние 12 мес.";
     if (classChip) classChip.textContent = classValue === "__all__" ? "Все классы" : classValue;
     if (countChip) countChip.textContent = String(rows.length || 0);
-    if (updatedChip) updatedChip.textContent = data?.meta?.generated || "auto";
   }
 
   function topProblemRows(data, monthSet, classFilter, limit = 12) {
@@ -1068,7 +1069,7 @@
       const monthSet = monthSetFromPeriod(periodSel?.value || "all", allMonths);
       const cls = classSel?.value || "__all__";
       const rows = buildEquipmentRows(liveData, monthSet, cls);
-      updateHeaderChips(liveData, periodSel?.value || "all", cls, rows);
+      updateHeaderChips(periodSel?.value || "all", cls, rows);
       const agg = aggregateClasses(rows);
       const totalEq = agg.reduce((s, a) => s + a.qty, 0) || 1;
       const cats = agg.map((a) => a.class);
@@ -2008,10 +2009,11 @@
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), runtimeLlm.timeoutMs);
       try {
-        const res = await fetch(runtimeLlm.baseUrl, {
+        const res = await dashboardApiFetch(runtimeLlm.baseUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            Accept: "application/json",
           },
           signal: controller.signal,
           body,
@@ -2062,10 +2064,11 @@
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), runtimeAgent.timeoutMs);
     try {
-      const res = await fetch(runtimeAgent.baseUrl, {
+      const res = await dashboardApiFetch(runtimeAgent.baseUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/json",
         },
         signal: controller.signal,
         body: JSON.stringify({ question, filters: filters || {} }),
@@ -2370,7 +2373,57 @@
     });
   }
 
-  async function boot() {
+  window.addEventListener("toir-dashboard-auth-expired", () => {
+    window.location.reload();
+  });
+
+  function showDashboardAuthGate(onSuccess) {
+    const gate = document.getElementById("dashboardAuthGate");
+    const form = document.getElementById("dashboardAuthForm");
+    const msg = document.getElementById("dashboardAuthMsg");
+    const DashAuth = window.ToirDashboardAuth;
+    if (!gate || !form || !DashAuth) {
+      onSuccess();
+      return;
+    }
+    gate.hidden = false;
+    gate.setAttribute("aria-hidden", "false");
+    document.body.classList.add("dashboard-auth-active");
+    form.onsubmit = async (ev) => {
+      ev.preventDefault();
+      const uEl = document.getElementById("dashboardAuthUser");
+      const pEl = document.getElementById("dashboardAuthPass");
+      const u = uEl && uEl.value ? String(uEl.value).trim() : "";
+      const p = pEl && pEl.value != null ? String(pEl.value) : "";
+      const btn = document.getElementById("dashboardAuthSubmit");
+      if (btn) btn.disabled = true;
+      if (msg) msg.textContent = "Проверка…";
+      try {
+        const origin = DashAuth.getApiOrigin();
+        const r = await fetch(`${origin}/api/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ username: u, password: p }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.token) {
+          if (msg) msg.textContent = (j && j.message) || "Неверный логин или пароль.";
+          return;
+        }
+        DashAuth.setToken(j.token);
+        gate.hidden = true;
+        gate.setAttribute("aria-hidden", "true");
+        document.body.classList.remove("dashboard-auth-active");
+        onSuccess();
+      } catch (_) {
+        if (msg) msg.textContent = "Не удалось связаться с сервером. Проверьте, что API запущен.";
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    };
+  }
+
+  async function bootDashboardAfterAuth() {
     wireDashboardLifecycleAudit();
     try {
       const [dashRes, brandRes] = await Promise.all([
@@ -2395,8 +2448,41 @@
       wireAi(data, assistantContext);
     } catch (e) {
       console.error(e);
-      document.getElementById("footerSource").textContent = "Ошибка загрузки data/toir.json";
+      const foot = document.getElementById("footerSource");
+      if (foot) foot.textContent = "Ошибка загрузки data/toir.json";
     }
+  }
+
+  async function boot() {
+    const DashAuth = window.ToirDashboardAuth;
+    if (!DashAuth) {
+      await bootDashboardAfterAuth();
+      return;
+    }
+    let authEnabled = false;
+    try {
+      authEnabled = await DashAuth.fetchAuthStatus();
+    } catch (_) {
+      const gate = document.getElementById("dashboardAuthGate");
+      const msg = document.getElementById("dashboardAuthMsg");
+      if (gate && msg) {
+        gate.hidden = false;
+        document.body.classList.add("dashboard-auth-active");
+        msg.textContent =
+          "Не удалось связаться с API входа. Убедитесь, что сервер запущен (node server/index.js, порт из .env).";
+      } else {
+        const foot = document.getElementById("footerSource");
+        if (foot) foot.textContent = "Ошибка связи с API";
+      }
+      return;
+    }
+    if (authEnabled && !DashAuth.getToken()) {
+      showDashboardAuthGate(() => {
+        bootDashboardAfterAuth();
+      });
+      return;
+    }
+    await bootDashboardAfterAuth();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);

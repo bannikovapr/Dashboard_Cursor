@@ -3087,3 +3087,76 @@ html[data-theme="dark"] .report-preview-warning {
   margin: 0 0 6px;
   color: var(--dash-heading);
 }
+
+/* ── Вход в дашборд (DASHBOARD_AUTH_*) ─────────────────────────── */
+.dashboard-auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
+}
+
+.dashboard-auth-gate[hidden] {
+  display: none !important;
+}
+
+body.dashboard-auth-active .layout {
+  filter: blur(2px);
+  pointer-events: none;
+  user-select: none;
+}
+
+.dashboard-auth-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 22px 22px 20px;
+}
+
+.dashboard-auth-title {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+  color: var(--dash-heading);
+}
+
+.dashboard-auth-hint {
+  margin: 0 0 16px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.dashboard-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.dashboard-auth-field label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.dashboard-auth-field input {
+  width: 100%;
+  padding: 10px 12px;
+  border: var(--control-border);
+  border-radius: var(--control-radius);
+  font-family: inherit;
+  font-size: 0.95rem;
+  background: var(--control-bg);
+  color: var(--brand-text);
+}
+
+.dashboard-auth-submit {
+  margin-top: 4px;
+  width: 100%;
+}

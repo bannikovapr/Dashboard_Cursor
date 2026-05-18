@@ -173,6 +173,16 @@ DLP_ALLOW_EPHEMERAL_KEY=true
 
 Если ключ не задан, UI продолжит работать, а AI-чат будет отвечать локальным fallback.
 
+### Вход в дашборд (опционально)
+
+В `.env` можно включить единственного локального пользователя: задайте `DASHBOARD_AUTH_ENABLED=true`, `DASHBOARD_AUTH_USER`, `DASHBOARD_AUTH_PASSWORD` и `DASHBOARD_AUTH_SECRET` (не короче 16 символов — случайная строка для подписи токена). После этого при открытии страницы запрашиваются логин и пароль; в рамках сеанса вкладки сохраняется Bearer-токен в `sessionStorage` (после закрытия вкладки вход нужен снова).
+
+Публичные без токена: `GET /health`, `GET /api/auth/status`, `POST /api/auth/login`. Остальные маршруты `/api/*` требуют заголовок `Authorization: Bearer …`.
+
+**Важно:** файл `data/toir.json` при классической схеме по-прежнему отдаётся **статическим** сервером (порт вроде 5173) и не проходит через эту авторизацию. Закрыть данные полностью можно отдельной доработкой (выдача JSON только через API с тем же Bearer), reverse proxy или отключением публичного доступа к каталогу `data/` на статике.
+
+Проверка модуля без поднятого HTTP: `npm run smoke:dashboard-auth`.
+
 ## Скрипты
 
 - `npm run build:dashboard:json` — собрать/обновить `data/toir.json` из Excel-отчётов ТОиР.
@@ -183,6 +193,7 @@ DLP_ALLOW_EPHEMERAL_KEY=true
 - `npm run smoke:agent-dlp` — smoke-проверка DLP: токенизация/детокенизация и guard-правила.
 - `npm run smoke:hardening` — smoke-проверка key providers, DLP negative-cases и rate limit.
 - `npm run smoke:filter-trace` — smoke-проверка полноты событий трассировки фильтра + проверка, что в `chat_model_request` не утекают raw email/phone.
+- `npm run smoke:dashboard-auth` — модуль входа в дашборд (пароль, HMAC-токен, без HTTP).
 - `npm run smoke:security-suite` — расширенный security-набор (crypto, vault, detector, policy, dlp, rate-limit, log-redaction, perf-guard).
 - `npm run smoke:failclosed-api` — e2e-проверка fail-closed: при недоступной ML-модели `/api/chat` возвращает `503 ml_unavailable`.
 - `npm run smoke:forecast` — smoke-проверка прогнозного инструмента агента.
