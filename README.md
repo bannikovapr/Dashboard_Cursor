@@ -38,14 +38,19 @@
 - `data/` — исходные отчеты Excel и итоговый `toir.json`.
 - `scripts/` — скрипты сборки данных и запуска.
 - `server/` — backend API для AI-чата.
+- `desktop/` — оболочка Electron (`npm run desktop`, закрытие окна останавливает API).
 - `js/`, `css/`, `index.html` — UI дашборда.
-- `assets/` — бренд-ресурсы и генерируемые изображения.
+- `assets/` — бренд-ресурсы; эталон иконки ярлыка — **`dashboard-icon-master.png`** (≥ ~180 px по длинной стороне), иначе марка из `desnol-mark.svg`.
 
 Ключевые файлы:
+- `Launch-TOIR-Dashboard.vbs` — тихий запуск без окна консоли (вызывает `scripts/start-dashboard-quiet.ps1`).
+- `scripts/start-dashboard-quiet.ps1` — обёртка со снятием транскрипта в `%TEMP%\toir-dashboard-launch.log`.
+- `scripts/create-dashboard-shortcut.ps1` — создание ярлыка на рабочем столе с иконкой `assets/toir-dashboard.ico`.
 - `scripts/analyze_toir.py` — основная агрегация данных из Excel.
 - `scripts/build-dashboard-json.js` — обертка запуска Python-агрегатора.
 - `scripts/start-dashboard.ps1` — основной сценарий старта.
 - `scripts/serve.ps1` — локальная раздача статики.
+- `desktop/main.js` — Electron: дочерний процесс `server/index.js` и окно с `index.html`.
 - `server/index.js` — API-слой (`/health`, `/api/chat`).
 - `server/openrouter-client.js` — клиент OpenRouter + нормализация ответа.
 - `js/toir-app.js` — UI-логика, фильтры, чат.
@@ -93,6 +98,49 @@
 ```powershell
 .\scripts\start-dashboard.ps1 -Port 5180 -NoRefresh
 ```
+
+### Вариант 3: окно Electron (закрытие окна останавливает API)
+
+Подходит, если не хотите оставлять процесс Node API в памяти после закрытия интерфейса: один раз из корня проекта установите зависимости (`npm install`), затем:
+
+```powershell
+npm run desktop
+```
+
+Electron откроет `index.html` с диска (без отдельного сервера на 5173), а сервер Express поднимется дочерним процессом **Node** на `http://localhost:8787` (порт задаётся `API_PORT` в `.env`). При закрытии окна дочерний API завершается.
+
+**Замечания:** запускайте через `npm run desktop`, чтобы использовался тот же `node`, что и у npm (`npm_node_execpath`). Если по какой-то причине запускаете `electron` вручную, убедитесь, что `node` доступен в `PATH`. Отдельный статический сервер (`scripts/serve.ps1`) для этого варианта не нужен. Если при старте окна возникают редкие проблемы с песочницей renderer на старой ОС, временная отладка — отключить `sandbox: true` в `desktop/main.js` (не для продакшена).
+
+### Ярлык на рабочем столе (без окна консоли)
+
+Для запуска без видимых окон PowerShell и отдельного окна Node (API):
+
+1. В корне проекта лежит **`Launch-TOIR-Dashboard.vbs`**: он вызывает PowerShell с `-WindowStyle Hidden` и сценарием **`scripts/start-dashboard-quiet.ps1`**.
+2. Лог вывода при скрытом запуске дописывается в **`%TEMP%\toir-dashboard-launch.log`** (удобно при сбоях).
+3. Иконка — **`assets/toir-dashboard.ico`**: `python scripts/build-toir-dashboard-ico.py`. Из баннера «иконка + надпись» можно сделать только марку: **`assets/desnol-logo-banner.png`** → `python scripts/extract-dashboard-mark-from-banner.py` → **`assets/dashboard-icon-master.png`**. Растр для сборки `.ico` используется, если **длинная сторона ≥ ~180 px**; иначе берётся вектор `desnol-mark.svg`.
+4. Создать ярлык на рабочем столе с этой иконкой:
+
+```powershell
+.\scripts\create-dashboard-shortcut.ps1
+```
+
+Ярлык без пересборки `toir.json` при каждом старте:
+
+```powershell
+.\scripts\create-dashboard-shortcut.ps1 -NoRefresh
+```
+
+Общий рабочий стол всех пользователей (нужны права администратора):
+
+```powershell
+.\scripts\create-dashboard-shortcut.ps1 -Scope Common
+```
+
+Тот же общий ярлык, но без пересборки JSON: `-Scope Common -NoRefresh`.
+
+Аргумент **`-NoRefresh`** в ярлыке передаётся в `scripts/start-dashboard-quiet.ps1` через `Launch-TOIR-Dashboard.vbs` (проброс `wscript` → PowerShell).
+
+**Останов:** закройте процесс **Windows PowerShell** (или **pwsh**), в котором крутится `serve.ps1`, через диспетчер задач — либо используйте запуск с видимой консолью (`START_DASHBOARD.cmd`), там останов по `Ctrl+C`.
 
 ### Запуск без пересборки JSON
 

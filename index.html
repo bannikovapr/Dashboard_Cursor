@@ -4,6 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Стратегический дашборд ТОИР</title>
+    <script>
+      (function () {
+        try {
+          var k = "toir-theme";
+          var t = localStorage.getItem(k);
+          if (t !== "dark" && t !== "light") {
+            t =
+              typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          }
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -36,9 +53,12 @@
               </div>
             </div>
             <div class="header-side">
-              <button type="button" id="btnRefreshDashboardData" class="btn-header-refresh" title="Пересобрать toir.json на сервере (если включено) и обновить графики">
-                Подгрузить свежие данные
-              </button>
+              <div class="header-side-actions">
+                <button type="button" id="btnRefreshDashboardData" class="btn-header-refresh" title="Пересобрать toir.json на сервере (если включено) и обновить графики">
+                  Подгрузить свежие данные
+                </button>
+                <button type="button" id="btnThemeToggle" class="btn-header-theme" aria-pressed="false" title="Включить тёмную тему" aria-label="Включить тёмную тему">☾</button>
+              </div>
               <span class="header-refresh-status" id="dataRefreshStatus" aria-live="polite"></span>
             </div>
           </div>
@@ -152,8 +172,8 @@
                 <div class="chart-box" id="chartCostsTab"></div>
               </div>
               <div class="card chart-card">
-                <div class="chart-title">Структура работ по месяцам (труд/материалы)</div>
-                <div class="chart-sub" id="chartMaterialLaborSub">Часы трудозатрат и материальных работ в выбранном срезе</div>
+                <div class="chart-title">Структура затрат по месяцам (материалы ₽ / труд ч)</div>
+                <div class="chart-sub" id="chartMaterialLaborSub">Материальные затраты в рублях и трудозатраты в часах</div>
                 <div class="chart-box" id="chartMaterialLabor"></div>
               </div>
               <div class="card chart-card">

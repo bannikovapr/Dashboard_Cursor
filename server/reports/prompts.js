@@ -36,7 +36,7 @@ const REPORT_GENERATION_SYSTEM_PROMPT = [
   "- Весь текст на русском языке.",
   "- В body_markdown используй конкретные числа из fact_pack (KPI, топ-объекты, доли).",
   "- В evidence_refs указывай ключи из fact_pack (kpis, monthly_trend, top_cost_objects, " +
-    "pareto_cost_objects, mtbf_top, mttr_top, failure_causes_top, quality_summary, " +
+    "pareto_cost_objects, mtbf_top, mttr_top, failure_causes_top, quality_summary, personnel_summary, " +
     "diagnostics_summary) или конкретные диагностики в формате diagnostics:R1, diagnostics:K2.",
   "- confidence: high (≥30 объектов или сильные сигналы), medium (10-30), low (мало данных).",
   "- НЕ упоминай в тексте: имена JSON-полей, пути к файлам, OpenRouter, API, серверы.",
@@ -72,6 +72,17 @@ const REPORT_EDIT_SYSTEM_PROMPT = [
   '      "evidence_refs": ["kpis"],',
   '      "confidence": "medium",',
   '      "warnings": []',
+  "    },",
+  "    {",
+  '      "operation_type": "insert_section_after",',
+  '      "after_section_id": "personnel",',
+  '      "new_section_id": "personnel_by_department",',
+  '      "title": "Использование персонала по подразделениям",',
+  '      "body_markdown": "...",',
+  '      "fact_bullets": ["..."],',
+  '      "evidence_refs": ["personnel_summary"],',
+  '      "confidence": "medium",',
+  '      "warnings": []',
   "    }",
   "  ]",
   "}",
@@ -80,6 +91,11 @@ const REPORT_EDIT_SYSTEM_PROMPT = [
   "- Если инструкция неоднозначна — выбирай самый аккуратный план: меньше операций, " +
     "не трогай секции, на которые пользователь не сослался.",
   "- При replace_section и insert_section_after используй конкретные числа из fact_pack.",
+  "- Для персонала и подразделений опирайся на fact_pack.personnel_summary (organizations, meta, departments_top) " +
+    "и указывай evidence_refs, включающие \"personnel_summary\".",
+  "- Для отдельного раздела по подразделениям используй section_id \"personnel_by_department\" " +
+    "(insert_section_after с new_section_id или replace_section существующей секции с этим id).",
+  "- Секцию data_limitations (обязательную) не удаляй; при запросе «убери ограничения» упрости текст и при необходимости обнови warnings.",
   "- Все тексты на русском языке.",
 ].join("\n");
 

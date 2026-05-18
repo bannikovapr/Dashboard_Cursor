@@ -1,6 +1,31 @@
 (function () {
   const U = window.ToirUtils;
   const Charts = window.ToirCharts;
+  const THEME_STORAGE_KEY = "toir-theme";
+
+  function syncThemeToggleButton() {
+    const btn = document.getElementById("btnThemeToggle");
+    if (!btn) return;
+    const dark = document.documentElement.getAttribute("data-theme") === "dark";
+    btn.setAttribute("aria-pressed", dark ? "true" : "false");
+    const nextLabel = dark ? "Включить светлую тему" : "Включить тёмную тему";
+    btn.title = nextLabel;
+    btn.setAttribute("aria-label", nextLabel);
+    btn.textContent = dark ? "☼" : "☾";
+  }
+
+  function applyDashboardTheme(mode) {
+    const m = mode === "dark" ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", m);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, m);
+    } catch (_) {}
+    syncThemeToggleButton();
+    if (window.__toirBrandJson && U.applyBrandTokens) {
+      U.applyBrandTokens(window.__toirBrandJson);
+    }
+  }
+
   const runtimeLlm = {
     baseUrl: window.TOIR_API_URL || "http://localhost:8787/api/chat",
     timeoutMs: 45000,
@@ -17,6 +42,44 @@
     } catch (e) {
       return "http://localhost:8787";
     }
+  }
+
+  const dashboardSessionId =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `sess_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+  let dashboardLifecyclePagehideBound = false;
+
+  function postDashboardLifecycle(phase) {
+    const url = `${getDashboardApiOrigin()}/api/dashboard/lifecycle`;
+    const body = JSON.stringify({ phase, surface: "web", sessionId: dashboardSessionId });
+    if (phase === "close" && typeof navigator.sendBeacon === "function") {
+      try {
+        const blob = new Blob([body], { type: "application/json" });
+        navigator.sendBeacon(url, blob);
+        return;
+      } catch (_) {
+        /* fallback fetch */
+      }
+    }
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body,
+    }).catch(() => {});
+  }
+
+  function isElectronRenderer() {
+    return typeof navigator !== "undefined" && String(navigator.userAgent || "").includes("Electron");
+  }
+
+  function wireDashboardLifecycleAudit() {
+    if (isElectronRenderer()) return;
+    if (dashboardLifecyclePagehideBound) return;
+    dashboardLifecyclePagehideBound = true;
+    postDashboardLifecycle("open");
+    window.addEventListener("pagehide", () => postDashboardLifecycle("close"));
   }
 
   function classifyClass(name) {
@@ -370,7 +433,7 @@
       repairs_staff_workload:
         "Запросы про ремонты сотрудников, выполненные работы сотрудников, загрузку персонала и трудозатраты сотрудников относятся к одному и тому же годовому срезу по персоналу.",
       link_to_material_labor:
-        "Годовой срез по сотрудникам нужно сопоставлять со структурой работ по месяцам, где labor_h отражает общий объем трудовых работ.",
+        "Годовой срез по сотрудникам нужно сопоставлять со структурой работ по месяцам, где labor_h отражает трудозатраты в часах, а material_rub — материальные затраты в рублях.",
       org_department_slice:
         "Запросы про загрузку персонала по организациям и подразделениям относятся к детализированному срезу по сотрудникам с группировками organization и department.",
     };
@@ -590,18 +653,20 @@
       container.appendChild(wrap);
       try {
         if (typeof ApexCharts !== "undefined") {
+          const base = U.getBaseChartOptions ? U.getBaseChartOptions() : {};
           const opts = {
-            chart: {
+            ...base,
+            chart: Object.assign({}, base.chart || {}, {
               type: evidence.chartType || "bar",
               height: 220,
               toolbar: { show: false },
               parentHeightOffset: 0,
-            },
+            }),
             series: evidence.series || [],
-            xaxis: { categories: evidence.categories || [] },
+            xaxis: Object.assign({}, base.xaxis || {}, { categories: evidence.categories || [] }),
             dataLabels: { enabled: false },
-            grid: { padding: { left: 0, right: 0, top: 4, bottom: 0 } },
-            legend: { position: "top", fontSize: "11px" },
+            grid: Object.assign({}, base.grid || {}, { padding: { left: 0, right: 0, top: 4, bottom: 0 } }),
+            legend: Object.assign({}, base.legend || {}, { position: "top", fontSize: "11px" }),
           };
           const ch = new ApexCharts(chartEl, opts);
           ch.render();
@@ -1024,7 +1089,7 @@
       );
       Charts.renderMaterialLaborStacked(
         mlRows.map((m) => shortMonthLabel(m.month)),
-        mlRows.map((m) => Number(m.material_h || m.material || 0)),
+        mlRows.map((m) => Number(m.material_rub || m.material || m.material_h || 0)),
         mlRows.map((m) => Number(m.labor_h || m.labor || 0)),
         "#chartMaterialLabor",
         260
@@ -1088,8 +1153,8 @@
       if (matLabSub) {
         matLabSub.textContent =
           cls !== "__all__"
-            ? `Труд/материалы по месяцам · класс: ${cls}`
-            : "Часы трудозатрат и материальных работ по месяцам";
+            ? `Материалы (₽) и труд (ч) по месяцам · класс: ${cls}`
+            : "Материальные затраты (₽) и трудозатраты (ч) по месяцам";
       }
       const eqStructSub = document.getElementById("chartStructureEqSub");
       if (eqStructSub) {
@@ -1145,6 +1210,26 @@
 
     drain();
     applyTab("summary");
+
+    syncThemeToggleButton();
+    const themeBtn = document.getElementById("btnThemeToggle");
+    if (themeBtn) {
+      themeBtn.addEventListener("click", () => {
+        const cur = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+        applyDashboardTheme(cur === "dark" ? "light" : "dark");
+        drain();
+        const personnelData =
+          liveData.personnelUsage && typeof liveData.personnelUsage === "object" ? liveData.personnelUsage : null;
+        const personnelOrgData =
+          liveData.personnelOrgUsage && typeof liveData.personnelOrgUsage === "object"
+            ? liveData.personnelOrgUsage
+            : null;
+        renderPersonnelDlp(personnelData);
+        renderPersonnelOrgUsage(personnelOrgData);
+        renderDiagnostics(liveData, periodSel?.value || "all", classSel?.value || "__all__");
+        Charts.resizeAll();
+      });
+    }
 
     const refreshDataBtn = document.getElementById("btnRefreshDashboardData");
     const dataRefreshStatus = document.getElementById("dataRefreshStatus");
@@ -1566,16 +1651,34 @@
 
     if (intent === "material_labor_structure") {
       if (!materialLaborRows.length) return noAnswer("В выгрузке нет структуры работ по трудозатратам и материалам.");
-      const totalMaterial = materialLaborRows.reduce((s, r) => s + (Number(r.material_h || r.material || 0) || 0), 0);
+      const totalMaterial = materialLaborRows.reduce(
+        (s, r) => s + (Number(r.material_rub || r.material || r.material_h || 0) || 0),
+        0
+      );
       const totalLabor = materialLaborRows.reduce((s, r) => s + (Number(r.labor_h || r.labor || 0) || 0), 0);
-      const sum = totalMaterial + totalLabor;
-      if (sum <= 0) return noAnswer("В структуре работ нет числовых значений по часам.");
-      const matPct = (100 * totalMaterial) / sum;
-      const labPct = (100 * totalLabor) / sum;
+      if (totalMaterial <= 0 && totalLabor <= 0) {
+        return noAnswer("В структуре работ нет числовых значений по материалам и труду.");
+      }
+      const peakMaterial = [...materialLaborRows]
+        .map((r) => ({
+          month: r.month,
+          value: Number(r.material_rub || r.material || r.material_h || 0) || 0,
+        }))
+        .sort((a, b) => b.value - a.value)[0];
+      const peakLabor = [...materialLaborRows]
+        .map((r) => ({
+          month: r.month,
+          value: Number(r.labor_h || r.labor || 0) || 0,
+        }))
+        .sort((a, b) => b.value - a.value)[0];
       return {
-        fact: `Материальные работы: ${Math.round(totalMaterial).toLocaleString("ru-RU")} ч (${matPct.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%); трудозатраты: ${Math.round(totalLabor).toLocaleString("ru-RU")} ч (${labPct.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%).`,
-        conclusion: labPct >= matPct ? "В текущем срезе преобладают трудозатраты." : "В текущем срезе преобладают материальные работы.",
-        action: "Проверьте месяцы с максимальной суммарной нагрузкой и состав работ в них.",
+        fact:
+          `Материальные затраты: ${Math.round(totalMaterial).toLocaleString("ru-RU")} ₽; ` +
+          `трудозатраты: ${Math.round(totalLabor).toLocaleString("ru-RU")} ч. ` +
+          `Пик материалов — ${peakMaterial?.month || "н/д"} (${Math.round(peakMaterial?.value || 0).toLocaleString("ru-RU")} ₽); ` +
+          `пик труда — ${peakLabor?.month || "н/д"} (${Math.round(peakLabor?.value || 0).toLocaleString("ru-RU")} ч).`,
+        conclusion: "Материалы и труд измеряются в разных единицах, поэтому сравнение долей напрямую некорректно.",
+        action: "Оценивайте динамику по двум осям: отдельно пики материальных затрат (₽) и отдельно пики трудозатрат (ч).",
       };
     }
 
@@ -2107,6 +2210,7 @@
   }
 
   async function boot() {
+    wireDashboardLifecycleAudit();
     try {
       const [dashRes, brandRes] = await Promise.all([
         fetch("data/toir.json", { cache: "no-store" }),
@@ -2116,6 +2220,7 @@
       window.dashboardData = data;
       if (brandRes.ok) {
         const brand = await brandRes.json();
+        window.__toirBrandJson = brand;
         U.applyBrandTokens(brand);
       }
       const personnelData =

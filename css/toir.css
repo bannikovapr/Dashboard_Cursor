@@ -535,9 +535,13 @@ body {
   font-size: 0.9rem;
 }
 
-/* ApexCharts в тёмной теме по умолчанию рисует свой серый «холст» — совпадаем с фоном карточки */
-html[data-theme="dark"] .apexcharts-svg .apexcharts-background {
-  fill: var(--brand-card);
+/* ApexCharts в тёмной теме: фон графика = фон карточки (inline fill у SVG перебиваем при необходимости) */
+html[data-theme="dark"] .chart-box .apexcharts-svg .apexcharts-background {
+  fill: var(--brand-card) !important;
+}
+
+html[data-theme="dark"] .chart-box .apexcharts-svg .apexcharts-plot-area {
+  fill: var(--brand-card) !important;
 }
 
 .chart-box--image {

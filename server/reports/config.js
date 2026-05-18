@@ -11,6 +11,7 @@ const REPORT_SECTION_CATALOG = [
   { id: "cost_hotspots",     title: "Ключевые зоны затрат и проблемных объектов", mandatory: false },
   { id: "reliability",       title: "Надёжность: КТГ, СННО, СВР и причины",       mandatory: false },
   { id: "personnel",         title: "Использование персонала",                    mandatory: false },
+  { id: "personnel_by_department", title: "Использование персонала по подразделениям", mandatory: false },
   { id: "data_limitations",  title: "Ограничения данных и надёжность выводов",    mandatory: true  },
   { id: "priority_actions",  title: "Приоритетные управленческие действия",       mandatory: false },
 ];

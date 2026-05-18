@@ -164,62 +164,62 @@
     "materialLaborByMonth": [
       {
         "month": "Январь 2025",
-        "material_h": 2059.0,
+        "material_rub": 580569.0,
         "labor_h": 1483.0
       },
       {
         "month": "Февраль 2025",
-        "material_h": 5185.0,
+        "material_rub": 462323.0,
         "labor_h": 84.0
       },
       {
         "month": "Март 2025",
-        "material_h": 4615.0,
+        "material_rub": 528617.0,
         "labor_h": 60.0
       },
       {
         "month": "Апрель 2025",
-        "material_h": 2313.0,
+        "material_rub": 590379.0,
         "labor_h": 87.0
       },
       {
         "month": "Май 2025",
-        "material_h": 4725.0,
+        "material_rub": 544615.0,
         "labor_h": 76.0
       },
       {
         "month": "Июнь 2025",
-        "material_h": 3823.0,
+        "material_rub": 313525.0,
         "labor_h": 71.0
       },
       {
         "month": "Июль 2025",
-        "material_h": 3003.0,
+        "material_rub": 311052.0,
         "labor_h": 135.0
       },
       {
         "month": "Август 2025",
-        "material_h": 6876.0,
+        "material_rub": 721427.0,
         "labor_h": 104.0
       },
       {
         "month": "Сентябрь 2025",
-        "material_h": 3851.0,
+        "material_rub": 283459.0,
         "labor_h": 72.0
       },
       {
         "month": "Октябрь 2025",
-        "material_h": 3430.0,
+        "material_rub": 321201.0,
         "labor_h": 117.0
       },
       {
         "month": "Ноябрь 2025",
-        "material_h": 5369.0,
+        "material_rub": 604699.0,
         "labor_h": 105.0
       },
       {
         "month": "Декабрь 2025",
-        "material_h": 5621.0,
+        "material_rub": 609190.0,
         "labor_h": 2131.0
       }
     ],

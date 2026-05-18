@@ -346,6 +346,50 @@ function buildPersonnelSection(factPack) {
   };
 }
 
+function buildPersonnelByDepartmentSection(factPack) {
+  const ps = factPack.personnel_summary || {};
+  const dept = ps.departments_top || [];
+  if (!dept.length) {
+    return {
+      section_id: "personnel_by_department",
+      title: "Использование персонала по подразделениям",
+      body_markdown:
+        "В фактовом пакете нет агрегированной разбивки по подразделениям (блок personnelOrgUsage.departments). " +
+        "Пересоберите toir.json при наличии выгрузки «Анализ использования персонала организация».",
+      fact_bullets: ["В срезе нет сводки departments_top для подразделений."],
+      evidence_refs: ["personnel_summary"],
+      confidence: "low",
+      warnings: [
+        "Нельзя сформировать содержательный раздел без агрегатов по подразделениям в источнике.",
+      ],
+      mandatory: false,
+    };
+  }
+  const topN = dept.slice(0, 8);
+  const lines = topN.map((d) => {
+    const pct = d.utilization_pct != null ? `${fmtNum(d.utilization_pct)}%` : "—";
+    return (
+      `- **${d.department || "н/д"}** (${d.organization || "—"}): факт **${fmtHours(d.fact_h)}** ч, ` +
+      `план **${fmtHours(d.plan_h)}** ч, выполнение **${pct}**, сотрудников: **${fmtNum(d.employees)}**.`
+    );
+  });
+  const body =
+    `Крупнейшие подразделения по объёму плановых часов в выгрузке (топ-${topN.length}).\n\n` + lines.join("\n");
+  return {
+    section_id: "personnel_by_department",
+    title: "Использование персонала по подразделениям",
+    body_markdown: body,
+    fact_bullets: dept.slice(0, 3).map((d) => {
+      const pct = d.utilization_pct != null ? `${fmtNum(d.utilization_pct)}%` : "—";
+      return `${d.department || "н/д"}: факт ${fmtHours(d.fact_h)} ч / план ${fmtHours(d.plan_h)} ч (${pct}).`;
+    }),
+    evidence_refs: ["personnel_summary"],
+    confidence: baseConfidence(dept.length * 3),
+    warnings: [],
+    mandatory: false,
+  };
+}
+
 function buildDataLimitationsSection(factPack) {
   const q = factPack.quality_summary || {};
   const unsupported = q.diagnostics_unsupported_count != null ? q.diagnostics_unsupported_count : 9;
@@ -416,6 +460,7 @@ function buildFallbackSections(factPack) {
     cost_hotspots: buildCostHotspotsSection,
     reliability: buildReliabilitySection,
     personnel: buildPersonnelSection,
+    personnel_by_department: buildPersonnelByDepartmentSection,
     data_limitations: buildDataLimitationsSection,
     priority_actions: buildPriorityActionsSection,
   };
@@ -430,6 +475,7 @@ module.exports = {
   buildCostHotspotsSection,
   buildReliabilitySection,
   buildPersonnelSection,
+  buildPersonnelByDepartmentSection,
   buildDataLimitationsSection,
   buildPriorityActionsSection,
 };

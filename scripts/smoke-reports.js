@@ -41,8 +41,8 @@ const facts = require("../server/reports/facts");
     pass("service exports all expected functions");
 
     // 2) Catalog and mandatory
-    assert(Array.isArray(config.REPORT_SECTION_CATALOG) && config.REPORT_SECTION_CATALOG.length === 8,
-      `expected 8 sections in catalog, got ${(config.REPORT_SECTION_CATALOG || []).length}`);
+    assert(Array.isArray(config.REPORT_SECTION_CATALOG) && config.REPORT_SECTION_CATALOG.length === 9,
+      `expected 9 sections in catalog, got ${(config.REPORT_SECTION_CATALOG || []).length}`);
     assert(config.REPORT_MANDATORY_SECTION_IDS.includes("passport"), "passport must be mandatory");
     assert(config.REPORT_MANDATORY_SECTION_IDS.includes("data_limitations"), "data_limitations must be mandatory");
     pass("config catalog and mandatory ids are valid");
@@ -60,15 +60,15 @@ const facts = require("../server/reports/facts");
     const created = await service.createReport({ filters: { period: "all", class: "__all__" } });
     createdIds.push(created.report_id);
     assert(created.report_id && /^rpt_/.test(created.report_id), "report_id must start with rpt_");
-    assert(Array.isArray(created.sections) && created.sections.length === 8,
-      `expected 8 sections, got ${(created.sections || []).length}`);
+    assert(Array.isArray(created.sections) && created.sections.length === 9,
+      `expected 9 sections, got ${(created.sections || []).length}`);
     const sectionIds = new Set(created.sections.map((s) => s.section_id));
     for (const mand of config.REPORT_MANDATORY_SECTION_IDS) {
       assert(sectionIds.has(mand), `mandatory section ${mand} missing from created report`);
     }
     assert(created.revisions.length === 1 && created.revisions[0].author_type === "system",
       "first revision must have author_type=system");
-    pass(`created report ${created.report_id}: 8 sections, 1 revision`);
+    pass(`created report ${created.report_id}: 9 sections, 1 revision`);
 
     // 5) List and load
     const list = service.listReports();

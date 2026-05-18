@@ -297,6 +297,122 @@ async function askOpenRouter({ question, context, requestId }) {
   return lastResult;
 }
 
+/**
+ * Вызов OpenRouter с произвольной цепочкой messages и response_format=json_object.
+ * Не использует normalizeAnswer из чата — возвращает распарсенный JSON-объект при успехе.
+ */
+async function sendOpenRouterJsonMessages({ messages, requestId }) {
+  if (parseBool(process.env.OPENROUTER_MOCK_ENABLED, false)) {
+    return {
+      ok: false,
+      status: 0,
+      latencyMs: 0,
+      providerModel: "mock/openrouter",
+      error: "OPENROUTER_MOCK_ENABLED: JSON-completions для правки отчётов отключены.",
+      requestId,
+    };
+  }
+
+  const apiKey = (process.env.OPENROUTER_API_KEY || "").trim();
+  if (!apiKey) {
+    return {
+      ok: false,
+      status: 0,
+      latencyMs: 0,
+      providerModel: "",
+      error: "OPENROUTER_API_KEY is not configured",
+      code: "missing_api_key",
+      requestId,
+    };
+  }
+
+  const modelChain = [DEFAULT_MODEL, FALLBACK_MODEL, ROUTER_FALLBACK_MODEL];
+  let lastResult = null;
+
+  for (const model of modelChain) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const startedAt = Date.now();
+    try {
+      const res = await fetch(OPENROUTER_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+          "HTTP-Referer": process.env.OPENROUTER_HTTP_REFERER || "http://localhost:5173",
+          "X-Title": process.env.OPENROUTER_APP_TITLE || "TOIR Dashboard Assistant",
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model,
+          temperature: 0.2,
+          response_format: { type: "json_object" },
+          messages: Array.isArray(messages) ? messages : [],
+        }),
+      });
+      const latencyMs = Date.now() - startedAt;
+      if (!res.ok) {
+        const errorText = await res.text();
+        lastResult = {
+          ok: false,
+          status: res.status,
+          latencyMs,
+          providerModel: model,
+          error: errorText.slice(0, 500),
+          requestId,
+        };
+        continue;
+      }
+      const json = await res.json();
+      const rawContent = json?.choices?.[0]?.message?.content || "";
+      const candidate = extractJsonCandidate(rawContent);
+      let parsed = null;
+      try {
+        parsed = candidate ? JSON.parse(candidate) : null;
+      } catch (_) {
+        parsed = null;
+      }
+      if (!parsed || typeof parsed !== "object") {
+        lastResult = {
+          ok: false,
+          status: res.status,
+          latencyMs,
+          providerModel: json?.model || model,
+          error: "Invalid or non-JSON model response",
+          rawContent: String(rawContent).slice(0, 800),
+          requestId,
+        };
+        continue;
+      }
+      lastResult = {
+        ok: true,
+        status: res.status,
+        latencyMs,
+        providerModel: json?.model || model,
+        parsed,
+        rawContent,
+        requestId,
+      };
+      return lastResult;
+    } catch (e) {
+      const latencyMs = Date.now() - startedAt;
+      lastResult = {
+        ok: false,
+        status: e?.name === "AbortError" ? 408 : 0,
+        latencyMs,
+        providerModel: model,
+        error: String(e?.message || e).slice(0, 500),
+        requestId,
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  return lastResult;
+}
+
 module.exports = {
   askOpenRouter,
+  sendOpenRouterJsonMessages,
 };

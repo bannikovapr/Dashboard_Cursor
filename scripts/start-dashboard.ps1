@@ -124,7 +124,7 @@ if ($nodeCmd) {
         Write-Warning "node_modules missing and npm not found. Run npm install in project root, then npm run start:api."
       }
     }
-    Write-Host "Starting API on http://localhost:8787 (separate window) ..." -ForegroundColor Yellow
+    Write-Host "Starting API on http://localhost:8787 (background, no console window) ..." -ForegroundColor Yellow
     $existingPid = Get-PortOwnerPid -Port 8787
     if ($existingPid) {
       $existingCmd = Get-ProcessCommandLine -ProcessId $existingPid
@@ -140,7 +140,7 @@ if ($nodeCmd) {
         }
       }
     }
-    $startedApiProcess = Start-Process -FilePath $nodeCmd -WorkingDirectory $root -ArgumentList @("server/index.js") -PassThru
+    $startedApiProcess = Start-Process -FilePath $nodeCmd -WorkingDirectory $root -ArgumentList @("server/index.js") -WindowStyle Hidden -PassThru
     Start-Sleep -Seconds 2
   } else {
     Write-Warning "server/index.js not found. Cloud AI mode via OpenRouter API will be unavailable."

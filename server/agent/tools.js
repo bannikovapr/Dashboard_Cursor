@@ -20,7 +20,7 @@ const TOOL_DEFINITIONS = [
       properties: {
         metric: {
           type: "string",
-          enum: ["costs_monthly", "material_h", "labor_h", "class_costs"],
+          enum: ["costs_monthly", "material_rub", "material_h", "labor_h", "class_costs"],
           description: "РњРµС‚СЂРёРєР° РІСЂРµРјРµРЅРЅРѕРіРѕ СЂСЏРґР° РґР»СЏ РїСЂРѕРіРЅРѕР·Р°.",
         },
         horizon: {

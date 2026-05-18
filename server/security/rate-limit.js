@@ -31,6 +31,10 @@ function resolveLimit(routeId) {
   if (normalized === "agent") {
     return parsePositiveInt(process.env.RATE_LIMIT_AGENT_MAX, common);
   }
+  if (normalized === "report_edit") {
+    const chat = parsePositiveInt(process.env.RATE_LIMIT_CHAT_MAX, common);
+    return parsePositiveInt(process.env.RATE_LIMIT_REPORT_EDIT_MAX, chat);
+  }
   return common;
 }
 
@@ -42,6 +46,9 @@ function resolveWindowMs(routeId) {
   }
   if (normalized === "agent") {
     return parsePositiveInt(process.env.RATE_LIMIT_AGENT_WINDOW_MS, common);
+  }
+  if (normalized === "report_edit") {
+    return parsePositiveInt(process.env.RATE_LIMIT_REPORT_EDIT_WINDOW_MS, common);
   }
   return common;
 }

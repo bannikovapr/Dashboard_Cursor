@@ -18,6 +18,49 @@ function median(values) {
   return (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+function round2(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.round(x * 100) / 100;
+}
+
+function buildPersonnelFactSummary(rawData) {
+  const po = rawData && rawData.personnelOrgUsage;
+  if (!po || typeof po !== "object") return {};
+  const metaIn = po.meta || {};
+  const stripOrg = (o) => ({
+    organization: o.organization != null ? String(o.organization) : "",
+    employees: round2(o.employees),
+    fact_h: round2(o.fact_h),
+    plan_h: round2(o.plan_h),
+    utilization_pct: round2(o.utilization_pct),
+  });
+  const stripDept = (d) => ({
+    organization: d.organization != null ? String(d.organization) : "",
+    department: d.department != null ? String(d.department) : "",
+    employees: round2(d.employees),
+    fact_h: round2(d.fact_h),
+    plan_h: round2(d.plan_h),
+    utilization_pct: round2(d.utilization_pct),
+  });
+  const organizations = (po.organizations || [])
+    .map(stripOrg)
+    .filter((r) => r.organization || r.plan_h || r.fact_h);
+  const departments = (po.departments || [])
+    .map(stripDept)
+    .filter((r) => r.department || r.plan_h || r.fact_h)
+    .sort((a, b) => (b.plan_h || 0) - (a.plan_h || 0));
+  return {
+    meta: {
+      organizations_count: Number(metaIn.organizations_count) || organizations.length,
+      departments_count: Number(metaIn.departments_count) || departments.length,
+      employees_count: Number(metaIn.employees_count) || 0,
+    },
+    organizations,
+    departments_top: departments.slice(0, 12),
+  };
+}
+
 function paretoBy(items, valueKey) {
   const arr = (items || [])
     .map((r) => Object.assign({}, r))
@@ -314,7 +357,7 @@ function buildFactPack(rawData, filters) {
     .sort((a, b) => b.score - a.score)
     .slice(0, 10);
 
-  const personnelSummary = {};
+  const personnelSummary = buildPersonnelFactSummary(rawData);
 
   const snapshotSummary = {
     source_name: meta.source || "",

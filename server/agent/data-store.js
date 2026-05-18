@@ -98,7 +98,7 @@ function buildDatasets(raw) {
 
   ds.material_labor = (raw.charts?.materialLaborByMonth || []).map((r) => ({
     month: r.month,
-    material_h: Number(r.material_h || r.material || 0),
+    material_rub: Number(r.material_rub || r.material || r.material_h || 0),
     labor_h: Number(r.labor_h || r.labor || 0),
   }));
 
@@ -190,7 +190,10 @@ function buildDatasets(raw) {
 const DATASET_SCHEMA = {
   costs_monthly: { fields: ["month", "total"], description: "Затраты ТОиР по месяцам" },
   failure_causes: { fields: ["cause", "count"], description: "Причины отказов и их количество" },
-  material_labor: { fields: ["month", "material_h", "labor_h"], description: "Структура работ по месяцам (часы материалов и труда)" },
+  material_labor: {
+    fields: ["month", "material_rub", "labor_h"],
+    description: "Структура по месяцам: материальные затраты (руб.) и трудозатраты (часы)",
+  },
   mtbf: { fields: ["equipment", "mtbf_h"], description: "СННО (наработка на отказ) по оборудованию, часы" },
   mttr: { fields: ["equipment", "mttr_h"], description: "СВР (среднее время восстановления) по оборудованию, часы" },
   equipment_costs: { fields: ["name", "class", "total", "months"], description: "Затраты по единицам оборудования с помесячной разбивкой" },
@@ -427,16 +430,19 @@ function getForecastSeries(metric, filters = {}) {
       meta.metricLabel = "Р—Р°С‚СЂР°С‚С‹ РўРћРР ";
       meta.unit = "rub";
     }
-  } else if (metric === "material_h" || metric === "labor_h") {
+  } else if (metric === "material_rub" || metric === "material_h" || metric === "labor_h") {
+    const isMaterial = metric === "material_rub" || metric === "material_h";
     series = (raw.charts?.materialLaborByMonth || []).map((r) => ({
       ts: monthLabelToTs(r.month),
       monthLabel: r.month,
-      value: metric === "material_h" ? Number(r.material_h || r.material || 0) : Number(r.labor_h || r.labor || 0),
-      metricLabel: metric === "material_h" ? "РњР°С‚РµСЂРёР°Р»СЊРЅС‹Рµ СЂР°Р±РѕС‚С‹ (С‡Р°СЃС‹)" : "РўСЂСѓРґРѕР·Р°С‚СЂР°С‚С‹ (С‡Р°СЃС‹)",
-      unit: "hours",
+      value: isMaterial
+        ? Number(r.material_rub || r.material || r.material_h || 0)
+        : Number(r.labor_h || r.labor || 0),
+      metricLabel: isMaterial ? "Материальные затраты (руб.)" : "Трудозатраты (часы)",
+      unit: isMaterial ? "rub" : "hours",
     }));
-    meta.metricLabel = metric === "material_h" ? "РњР°С‚РµСЂРёР°Р»СЊРЅС‹Рµ СЂР°Р±РѕС‚С‹ (С‡Р°СЃС‹)" : "РўСЂСѓРґРѕР·Р°С‚СЂР°С‚С‹ (С‡Р°СЃС‹)";
-    meta.unit = "hours";
+    meta.metricLabel = isMaterial ? "Материальные затраты (руб.)" : "Трудозатраты (часы)";
+    meta.unit = isMaterial ? "rub" : "hours";
   } else if (metric === "class_costs") {
     series = buildCostsSeriesByClass(raw, classFilter);
     meta.metricLabel = classFilter && classFilter !== "__all__"

@@ -1043,12 +1043,24 @@
     const overlay = createOverlay();
     const dialog = document.createElement("div");
     dialog.className = "report-modal report-modal--preview";
+    const origById = new Map((doc_.sections || []).map((s) => [s.section_id, s]));
+    const changedSectionIds = new Set();
+    (draft.preview_sections || []).forEach((s) => {
+      const o = origById.get(s.section_id);
+      if (!o) changedSectionIds.add(s.section_id);
+      else if (
+        String(o.title || "") !== String(s.title || "") ||
+        String(o.body_markdown || "") !== String(s.body_markdown || "")
+      ) {
+        changedSectionIds.add(s.section_id);
+      }
+    });
     const opsHtml = (draft.operations || [])
       .map((op) => `<li><b>${escapeHtml(op.operation_type)}</b> · ${escapeHtml(describeOperation(op, doc_))}${op.reasoning ? `<div class="report-op-reason">${escapeHtml(op.reasoning)}</div>` : ""}</li>`)
       .join("");
     const previewSectionsHtml = (draft.preview_sections || [])
       .map((s) => `
-        <div class="report-preview-section">
+        <div class="report-preview-section${changedSectionIds.has(s.section_id) ? " report-preview-section--changed" : ""}">
           <h4>${escapeHtml(s.title)}</h4>
           <div>${renderMarkdown(s.body_markdown || "")}</div>
           ${s.fact_bullets && s.fact_bullets.length ? `<ul>${s.fact_bullets.map((b) => `<li>${renderInline(b)}</li>`).join("")}</ul>` : ""}

@@ -7,8 +7,18 @@ const schemas = require("./schemas");
 const facts = require("./facts");
 const templates = require("./section-templates");
 const storage = require("./storage");
+const { sendOpenRouterJsonMessages } = require("../openrouter-client");
+const prompts = require("./prompts");
+const { writeAuditEvent, digestText } = require("../security/audit-log");
 
 const TOIR_PATH = path.resolve(__dirname, "../../data/toir.json");
+
+function parseBool(value, fallback) {
+  if (value == null) return fallback;
+  const v = String(value).trim().toLowerCase();
+  if (!v) return fallback;
+  return !["0", "false", "off", "no"].includes(v);
+}
 
 function loadRawData() {
   if (!fs.existsSync(TOIR_PATH)) {
@@ -186,6 +196,7 @@ function applyOperations(title, sections, operations) {
       const idx = list.findIndex((s) => s.section_id === op.section_id);
       if (idx < 0) continue;
       const s = list[idx];
+      const rawOp = raw && typeof raw === "object" ? raw : {};
       if (op.title != null) s.title = String(op.title);
       if (op.body_markdown != null) s.body_markdown = String(op.body_markdown);
       if (Array.isArray(op.fact_bullets) && op.fact_bullets.length) {
@@ -195,17 +206,26 @@ function applyOperations(title, sections, operations) {
       if (Array.isArray(op.evidence_refs) && op.evidence_refs.length) {
         s.evidence_refs = op.evidence_refs.map((v) => String(v)).filter(Boolean);
       }
+      if (Object.prototype.hasOwnProperty.call(rawOp, "warnings") && Array.isArray(rawOp.warnings)) {
+        s.warnings = rawOp.warnings.map((v) => String(v)).filter(Boolean);
+      }
       continue;
     }
     if (type === "insert_section_after") {
       const sid = op.new_section_id || op.section_id;
       if (!sid) throw new Error("insert_section_after: не указан идентификатор секции.");
       const entry = catalogEntry(sid);
+      const rawOp = raw && typeof raw === "object" ? raw : {};
       const newSec = schemas.makeSection({
         section_id: sid,
         title: op.title != null ? String(op.title) : entry ? entry.title : sid,
         body_markdown: op.body_markdown != null ? String(op.body_markdown) : "Заполните содержание секции.",
         fact_bullets: op.fact_bullets || [],
+        evidence_refs: op.evidence_refs && op.evidence_refs.length ? op.evidence_refs : [],
+        confidence: op.confidence || "medium",
+        warnings: Object.prototype.hasOwnProperty.call(rawOp, "warnings") && Array.isArray(rawOp.warnings)
+          ? rawOp.warnings.map((v) => String(v)).filter(Boolean)
+          : [],
         mandatory: entry ? entry.mandatory : false,
       });
       let insertAt = list.length;
@@ -251,25 +271,163 @@ function buildFallbackEditPlan(document, instruction) {
       body_markdown: `${ex.body_markdown}\n\n_Правка по запросу (fallback, без LLM)._`,
       reasoning: "Эвристика: дополнение executive_summary.",
     });
-    warnings.push("Использован упрощённый план правок (fallback), LLM не вызывался.");
   }
   return { operations, warnings };
 }
 
-async function planEdit(reportId, instruction) {
-  const document = loadReport(reportId);
-  const ins = String(instruction || "").trim();
-  if (!ins) throw new Error("Инструкция не может быть пустой.");
-  const { operations, warnings } = buildFallbackEditPlan(document, ins);
-  if (!operations.length) {
-    throw new Error("Не удалось сформировать операции по инструкции (fallback).");
+function normalizeLlmOperations(document, rawList) {
+  const existingIds = new Set((document.sections || []).map((s) => s.section_id));
+  const out = [];
+  if (!Array.isArray(rawList)) return out;
+  for (const item of rawList) {
+    if (!item || typeof item !== "object") continue;
+    const type = String(item.operation_type || "").trim();
+    if (!config.VALID_OPERATION_TYPES.includes(type)) continue;
+    const op = Object.assign({}, item, { operation_type: type });
+    if (type === "insert_section_after") {
+      if (!op.new_section_id && op.section_id && !existingIds.has(String(op.section_id))) {
+        op.new_section_id = String(op.section_id);
+        op.section_id = null;
+      }
+    }
+    out.push(op);
   }
+  return out;
+}
+
+function tryPreview(document, operations) {
   const previewSections = schemas.cloneSections(document.sections);
   const previewTitle = applyOperations(document.title, previewSections, operations);
   validateSections(previewSections);
   if (!previewTitle || !String(previewTitle).trim()) {
     throw new Error("Пустой заголовок после превью операций.");
   }
+  return { previewSections, previewTitle };
+}
+
+async function planEdit(reportId, instruction, options) {
+  const requestId = (options && options.requestId) || "";
+  const document = loadReport(reportId);
+  const ins = String(instruction || "").trim();
+  if (!ins) throw new Error("Инструкция не может быть пустой.");
+
+  const warnings = [];
+  let operations = [];
+  let used_fallback = true;
+
+  const llmOn =
+    parseBool(process.env.REPORT_AI_EDIT_ENABLED, true) &&
+    !!(process.env.OPENROUTER_API_KEY || "").trim() &&
+    !parseBool(process.env.OPENROUTER_MOCK_ENABLED, false);
+
+  let llmMeta = null;
+
+  if (llmOn) {
+    try {
+      const messages = prompts.buildReportEditMessages(document, ins);
+      const llm = await sendOpenRouterJsonMessages({ messages, requestId });
+      if (llm.ok && llm.parsed && Array.isArray(llm.parsed.operations)) {
+        const normalized = normalizeLlmOperations(document, llm.parsed.operations);
+        if (normalized.length) {
+          operations = normalized;
+          used_fallback = false;
+          llmMeta = { providerModel: llm.providerModel || null, latencyMs: llm.latencyMs || null };
+        }
+      }
+      if (operations.length === 0) {
+        warnings.push(
+          `LLM не вернул применимый план правок${llm && llm.error ? `: ${String(llm.error).slice(0, 200)}` : ""}.`
+        );
+        writeAuditEvent({
+          event: "report_edit_llm_plan_failed",
+          service: "toir-api",
+          requestId,
+          reportId: document.report_id,
+          instructionDigest: digestText(ins),
+          error: (llm && llm.error) || "no_operations",
+          providerModel: llm && llm.providerModel,
+        });
+      }
+    } catch (e) {
+      warnings.push(`Ошибка вызова LLM для плана правок: ${String(e.message || e).slice(0, 220)}.`);
+      writeAuditEvent({
+        event: "report_edit_llm_exception",
+        service: "toir-api",
+        requestId,
+        reportId: document.report_id,
+        instructionDigest: digestText(ins),
+        error: String(e.message || e).slice(0, 400),
+      });
+    }
+  } else if (!parseBool(process.env.REPORT_AI_EDIT_ENABLED, true)) {
+    warnings.push("AI-план правок отключён (REPORT_AI_EDIT_ENABLED=false), используется эвристический план.");
+  } else if (!(process.env.OPENROUTER_API_KEY || "").trim()) {
+    warnings.push("Ключ OpenRouter не настроен — используется эвристический план правок.");
+  } else if (parseBool(process.env.OPENROUTER_MOCK_ENABLED, false)) {
+    warnings.push("Включён OPENROUTER_MOCK — JSON-план правок через модель недоступен, используется fallback.");
+  }
+
+  if (!operations.length) {
+    const fb = buildFallbackEditPlan(document, ins);
+    for (const w of fb.warnings || []) warnings.push(w);
+    operations = fb.operations || [];
+    if (!operations.length) {
+      throw new Error("Не удалось сформировать операции по инструкции.");
+    }
+    used_fallback = true;
+  }
+
+  let previewSections;
+  let previewTitle;
+  try {
+    const pv = tryPreview(document, operations);
+    previewSections = pv.previewSections;
+    previewTitle = pv.previewTitle;
+  } catch (e) {
+    if (!used_fallback) {
+      warnings.push(`План LLM не прошёл проверку: ${String(e.message || e).slice(0, 280)}.`);
+      writeAuditEvent({
+        event: "report_edit_llm_validate_failed",
+        service: "toir-api",
+        requestId,
+        reportId: document.report_id,
+        instructionDigest: digestText(ins),
+        error: String(e.message || e).slice(0, 400),
+      });
+      const fb = buildFallbackEditPlan(document, ins);
+      for (const w of fb.warnings || []) {
+        if (warnings.indexOf(w) === -1) warnings.push(w);
+      }
+      operations = fb.operations || [];
+      if (!operations.length) {
+        throw new Error("Не удалось сформировать операции по инструкции.");
+      }
+      used_fallback = true;
+      const pv2 = tryPreview(document, operations);
+      previewSections = pv2.previewSections;
+      previewTitle = pv2.previewTitle;
+    } else {
+      throw e;
+    }
+  }
+
+  if (!used_fallback && llmMeta) {
+    writeAuditEvent({
+      event: "report_edit_llm_plan_ok",
+      service: "toir-api",
+      requestId,
+      reportId: document.report_id,
+      instructionDigest: digestText(ins),
+      operationsCount: operations.length,
+      providerModel: llmMeta.providerModel,
+      latencyMs: llmMeta.latencyMs,
+    });
+  }
+
+  if (used_fallback && warnings.indexOf("Использован эвристический план правок (fallback).") === -1) {
+    warnings.unshift("Использован эвристический план правок (fallback).");
+  }
+
   const draft = schemas.makeEditDraft({
     draft_id: schemas.newId("drf"),
     report_id: document.report_id,
@@ -280,7 +438,7 @@ async function planEdit(reportId, instruction) {
     preview_title: previewTitle,
     preview_sections: previewSections,
     warnings,
-    used_fallback: true,
+    used_fallback,
   });
   document.pending_drafts = [...(document.pending_drafts || []), draft].slice(-config.REPORT_MAX_PENDING_DRAFTS);
   storage.saveDocument(document);

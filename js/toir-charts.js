@@ -4,6 +4,9 @@
   const chartBarColor = () =>
     getComputedStyle(document.documentElement).getPropertyValue("--chart-bar").trim() || "#1ed760";
 
+  const chartAxisColor = () =>
+    getComputedStyle(document.documentElement).getPropertyValue("--chart-axis").trim() || "#64748b";
+
   const categoricalPalette = () => [
     "#1e88e5", // blue
     "#10b981", // green
@@ -19,18 +22,35 @@
 
   function dispose(sel) {
     const c = apexBySelector[sel];
-    if (c && typeof c.destroy === "function") c.destroy();
+    if (Array.isArray(c)) {
+      c.forEach((chart) => {
+        if (chart && typeof chart.destroy === "function") {
+          try {
+            chart.destroy();
+          } catch (_) {}
+        }
+      });
+    } else if (c && typeof c.destroy === "function") {
+      try {
+        c.destroy();
+      } catch (_) {}
+    }
     delete apexBySelector[sel];
   }
 
+  function chartHintHtml(text) {
+    return `<p class="chart-hint">${text}</p>`;
+  }
+
   function baseOpts() {
-    return U.getBaseChartOptionsLight();
+    return U.getBaseChartOptions ? U.getBaseChartOptions() : U.getBaseChartOptionsLight();
   }
 
   function chartLayout(height, chartType) {
     const b = baseOpts();
     const tabletHeight = Math.max(220, Math.round(height * 0.9));
     const phoneHeight = Math.max(200, Math.round(height * 0.8));
+    const axisColor = chartAxisColor();
     return {
       ...b,
       chart: {
@@ -52,7 +72,12 @@
             chart: { height: tabletHeight },
             legend: { position: "bottom", fontSize: "10px" },
             xaxis: { labels: { rotate: -20, hideOverlappingLabels: true, trim: true } },
-            yaxis: { labels: { maxWidth: 180 } },
+            yaxis: {
+              labels: {
+                maxWidth: 180,
+                style: { colors: axisColor, fontSize: "11px" },
+              },
+            },
           },
         },
         {
@@ -61,7 +86,12 @@
             chart: { height: phoneHeight },
             legend: { position: "bottom", fontSize: "9px" },
             xaxis: { labels: { rotate: 0, hideOverlappingLabels: true, trim: true, maxHeight: 52 } },
-            yaxis: { labels: { maxWidth: 140, style: { fontSize: "11px" } } },
+            yaxis: {
+              labels: {
+                maxWidth: 140,
+                style: { fontSize: "11px", colors: axisColor },
+              },
+            },
             grid: { padding: { left: 4, right: 0 } },
           },
         },
@@ -71,12 +101,15 @@
 
   function resizeAll() {
     requestAnimationFrame(() => {
-      Object.values(apexBySelector).forEach((chart) => {
-        if (chart && typeof chart.resize === "function") {
-          try {
-            chart.resize();
-          } catch (_) {}
-        }
+      Object.values(apexBySelector).forEach((entry) => {
+        const charts = Array.isArray(entry) ? entry : [entry];
+        charts.forEach((chart) => {
+          if (chart && typeof chart.resize === "function") {
+            try {
+              chart.resize();
+            } catch (_) {}
+          }
+        });
       });
     });
   }
@@ -85,7 +118,7 @@
     const el = document.querySelector(targetSel);
     if (!el) return;
     if (!categories.length) {
-      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных.</p>';
+      el.innerHTML = chartHintHtml("Нет данных.");
       dispose(targetSel);
       return;
     }
@@ -113,7 +146,7 @@
     const el = document.querySelector(targetSel);
     if (!el) return;
     if (!labels.length) {
-      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных.</p>';
+      el.innerHTML = chartHintHtml("Нет данных.");
       dispose(targetSel);
       return;
     }
@@ -144,7 +177,7 @@
     const el = document.querySelector(targetSel);
     if (!el) return;
     if (!categories.length) {
-      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных.</p>';
+      el.innerHTML = chartHintHtml("Нет данных.");
       dispose(targetSel);
       return;
     }
@@ -177,7 +210,7 @@
     const el = document.querySelector(targetSel);
     if (!el) return;
     if (!names.length) {
-      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных.</p>';
+      el.innerHTML = chartHintHtml("Нет данных.");
       dispose(targetSel);
       return;
     }
@@ -212,7 +245,7 @@
     const el = document.querySelector(targetSel);
     if (!el) return;
     if (!labels.length || costsRub.every((x) => !x)) {
-      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных.</p>';
+      el.innerHTML = chartHintHtml("Нет данных.");
       dispose(targetSel);
       return;
     }
@@ -248,7 +281,7 @@
     if (!el) return;
     const total = counts.reduce((a, b) => a + b, 0);
     if (!labels.length || !total) {
-      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных по проценту использования.</p>';
+      el.innerHTML = chartHintHtml("Нет данных по проценту использования.");
       dispose(targetSel);
       return;
     }
@@ -285,7 +318,7 @@
     const el = document.querySelector(targetSel);
     if (!el) return;
     if (!names.length) {
-      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных КТГ.</p>';
+      el.innerHTML = chartHintHtml("Нет данных КТГ.");
       dispose(targetSel);
       return;
     }
@@ -311,7 +344,7 @@
     const el = document.querySelector(targetSel);
     if (!el) return;
     if (!names.length) {
-      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных по отказам.</p>';
+      el.innerHTML = chartHintHtml("Нет данных по отказам.");
       dispose(targetSel);
       return;
     }
@@ -337,7 +370,7 @@
     const el = document.querySelector(targetSel);
     if (!el) return;
     if (!classes.length) {
-      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных.</p>';
+      el.innerHTML = chartHintHtml("Нет данных.");
       dispose(targetSel);
       return;
     }
@@ -360,7 +393,7 @@
     const el = document.querySelector(targetSel);
     if (!el) return;
     if (!classes.length) {
-      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных.</p>';
+      el.innerHTML = chartHintHtml("Нет данных.");
       dispose(targetSel);
       return;
     }
@@ -392,7 +425,7 @@
     const el = document.querySelector(targetSel);
     if (!el) return;
     if (!labels.length || !values.length) {
-      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных КТГ по месяцам.</p>';
+      el.innerHTML = chartHintHtml("Нет данных КТГ по месяцам.");
       dispose(targetSel);
       return;
     }
@@ -423,7 +456,7 @@
     const el = document.querySelector(targetSel);
     if (!el) return;
     if (!names.length) {
-      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных СННО в срезе.</p>';
+      el.innerHTML = chartHintHtml("Нет данных СННО в срезе.");
       dispose(targetSel);
       return;
     }
@@ -448,7 +481,7 @@
     const el = document.querySelector(targetSel);
     if (!el) return;
     if (!names.length) {
-      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных СВР в срезе.</p>';
+      el.innerHTML = chartHintHtml("Нет данных СВР в срезе.");
       dispose(targetSel);
       return;
     }
@@ -469,33 +502,81 @@
     apexBySelector[targetSel].render();
   }
 
-  function renderMaterialLaborStacked(labels, materialHours, laborHours, targetSel = "#chartMaterialLabor", height = 300) {
+  function renderMaterialLaborStacked(labels, materialRub, laborHours, targetSel = "#chartMaterialLabor", height = 300) {
     const el = document.querySelector(targetSel);
     if (!el) return;
     if (!labels.length) {
-      el.innerHTML = '<p class="hint" style="padding:24px;color:#64748b">Нет данных по структуре работ.</p>';
+      el.innerHTML = chartHintHtml("Нет данных по структуре затрат и труда.");
       dispose(targetSel);
       return;
     }
     dispose(targetSel);
     el.innerHTML = "";
     const pal = categoricalPalette();
+    const layout = chartLayout(height, "line");
     const opts = {
-      ...chartLayout(height, "bar"),
-      chart: { ...chartLayout(height, "bar").chart, stacked: true },
-      plotOptions: { bar: { horizontal: false, columnWidth: "58%", borderRadius: 4 } },
+      ...layout,
+      chart: {
+        ...layout.chart,
+        type: "line",
+        stacked: false,
+        toolbar: { show: false },
+      },
+      plotOptions: { bar: { horizontal: false, columnWidth: "62%", borderRadius: 4 } },
       series: [
-        { name: "Материальные работы, ч", data: materialHours },
-        { name: "Трудозатраты, ч", data: laborHours },
+        { name: "Материальные затраты, ₽", type: "column", data: materialRub },
+        { name: "Трудозатраты, ч", type: "column", data: laborHours },
       ],
+      stroke: { width: [0, 0], curve: "straight" },
       colors: [pal[0], pal[1]],
       xaxis: { categories: labels, labels: { rotate: -30 } },
-      yaxis: { title: { text: "Часы" } },
+      yaxis: [
+        {
+          seriesName: "Материальные затраты, ₽",
+          title: { text: "Материалы, ₽" },
+          labels: { formatter: (v) => `${Math.round(v).toLocaleString("ru-RU")}` },
+        },
+        {
+          seriesName: "Трудозатраты, ч",
+          opposite: true,
+          title: { text: "Труд, ч" },
+          labels: { formatter: (v) => `${Math.round(v).toLocaleString("ru-RU")}` },
+        },
+      ],
       legend: { position: "top" },
-      tooltip: { y: { formatter: (v) => `${Math.round(v).toLocaleString("ru-RU")} ч` } },
+      dataLabels: { enabled: false },
+      grid: { padding: { left: 8, right: 8 } },
+      // Для графика с двумя осями отключаем общий responsive из chartLayout:
+      // там yaxis задаётся объектом, что конфликтует с массивом yaxis.
+      responsive: [],
+      tooltip: {
+        shared: true,
+        y: {
+          formatter: (v, ctx) =>
+            (ctx && ctx.seriesIndex === 0)
+              ? `${Math.round(v).toLocaleString("ru-RU")} ₽`
+              : `${Math.round(v).toLocaleString("ru-RU")} ч`,
+        },
+      },
     };
-    apexBySelector[targetSel] = new ApexCharts(el, opts);
-    apexBySelector[targetSel].render();
+    try {
+      const chart = new ApexCharts(el, opts);
+      apexBySelector[targetSel] = chart;
+      const renderResult = chart.render();
+      if (renderResult && typeof renderResult.catch === "function") {
+        renderResult.catch((err) => {
+          console.error("[TOIR] renderMaterialLaborStacked render failed:", err);
+          dispose(targetSel);
+          const msg = (err && err.message) ? String(err.message) : "unknown";
+          el.innerHTML = chartHintHtml(`Не удалось отрисовать график структуры затрат. Ошибка: ${String(msg).slice(0, 400)}`);
+        });
+      }
+    } catch (err) {
+      console.error("[TOIR] renderMaterialLaborStacked init failed:", err);
+      dispose(targetSel);
+      const msg = (err && err.message) ? String(err.message) : "unknown";
+      el.innerHTML = chartHintHtml(`Не удалось отрисовать график структуры затрат. Ошибка: ${String(msg).slice(0, 400)}`);
+    }
   }
 
   function shortenLabel(s, max = 42) {
@@ -522,18 +603,21 @@
     const categories = (spec.categories || []).map((c) => shortenLabel(c, 30));
     const palette = categoricalPalette();
     const series = spec.series || [];
+    const axisTint = chartAxisColor();
+    const layoutType = type === "bar" && categories.length > 6 ? "bar" : type;
+    const layoutOnce = chartLayout(height, layoutType);
 
     const isPie = type === "pie" || type === "donut";
 
     if (isPie) {
       const data = series[0]?.data || [];
       const opts = {
-        ...chartLayout(height, type),
-        chart: { ...chartLayout(height, type).chart, type },
+        ...layoutOnce,
+        chart: { ...layoutOnce.chart, type, foreColor: axisTint },
         labels: categories,
         series: data,
         colors: palette.slice(0, data.length),
-        legend: { position: "bottom", fontSize: "10px" },
+        legend: { position: "bottom", fontSize: "10px", labels: { colors: axisTint } },
       };
       apexBySelector[targetSel] = new ApexCharts(el, opts);
       apexBySelector[targetSel].render();
@@ -543,34 +627,40 @@
     const isHorizontalBar = type === "bar" && categories.length > 6;
 
     const opts = {
-      ...chartLayout(height, isHorizontalBar ? "bar" : type),
+      ...layoutOnce,
       chart: {
-        ...chartLayout(height, type).chart,
+        ...layoutOnce.chart,
         type: type === "area" ? "area" : type === "line" ? "line" : "bar",
+        foreColor: axisTint,
       },
       plotOptions: isHorizontalBar
         ? { bar: { horizontal: true, barHeight: "60%", borderRadius: 3 } }
         : { bar: { columnWidth: "55%", borderRadius: 3 } },
+      legend: {
+        ...(layoutOnce.legend || {}),
+        labels: { colors: axisTint },
+      },
       xaxis: {
-        ...chartLayout(height, type).xaxis,
+        ...layoutOnce.xaxis,
         categories,
         labels: {
-          style: { colors: "#64748b", fontSize: "10px" },
+          ...((layoutOnce.xaxis && layoutOnce.xaxis.labels) || {}),
+          style: { colors: axisTint, fontSize: "10px" },
           hideOverlappingLabels: true,
           rotate: isHorizontalBar ? 0 : -35,
           maxHeight: 80,
         },
       },
-      // Горизонтальный bar: метки категорий на оси Y; числовой formatter давал «0» вместо ФИО.
       yaxis: isHorizontalBar
         ? {
             labels: {
               maxWidth: 220,
-              style: { colors: "#64748b", fontSize: "12px" },
+              style: { colors: axisTint, fontSize: "12px" },
             },
           }
         : {
             labels: {
+              style: { colors: axisTint, fontSize: "11px" },
               formatter: (v) => formatCompactNumber(v),
             },
           },
@@ -579,6 +669,7 @@
         data: s.data || [],
       })),
       tooltip: {
+        ...((layoutOnce.tooltip && typeof layoutOnce.tooltip === "object") ? layoutOnce.tooltip : {}),
         y: {
           formatter: (v) => Number(v).toLocaleString("ru-RU", { maximumFractionDigits: 2 }),
         },

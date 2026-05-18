@@ -55,6 +55,47 @@ app.use(express.json({ limit: "50mb" }));
 const reportsRouter = require("./reports/router");
 app.use("/api/reports", reportsRouter);
 
+app.post("/api/dashboard/lifecycle", (req, res) => {
+  const hardening = evaluateHardening(req, "dashboard_lifecycle");
+  applyHardeningHeaders(res, hardening);
+  if (!hardening.rate.allowed) {
+    return res.status(429).json({
+      ok: false,
+      errorCode: "rate_limited",
+      message: "Слишком много запросов. Повторите позже.",
+    });
+  }
+
+  const body = req.body || {};
+  const phase = String(body.phase || "").trim().toLowerCase();
+  if (phase !== "open" && phase !== "close") {
+    return res.status(400).json({
+      ok: false,
+      errorCode: "bad_request",
+      message: "Поле phase должно быть open или close.",
+    });
+  }
+
+  let surface = String(body.surface || "web").trim().toLowerCase();
+  if (surface !== "electron" && surface !== "web") {
+    surface = "web";
+  }
+
+  let sessionId = body.sessionId != null ? String(body.sessionId).trim().slice(0, 80) : "";
+  if (!sessionId) sessionId = null;
+
+  audit("dashboard_lifecycle", {
+    phase,
+    surface,
+    sessionId,
+    route: "/api/dashboard/lifecycle",
+    userAgent:
+      typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"].slice(0, 200) : null,
+  });
+
+  res.json({ ok: true });
+});
+
 function validateQuestion(question) {
   if (typeof question !== "string") return "Поле question должно быть строкой.";
   const value = question.trim();

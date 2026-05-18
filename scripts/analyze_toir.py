@@ -263,56 +263,72 @@ def _parse_excel_datetime(val):
 
 
 # ── Материальные / трудовые по месяцам (лист «Анализ отказов», руб.) ──
-def parse_material_labor_monthly(wb):
-    ws = wb["Анализ отказов"]
+def parse_material_labor_monthly(wb, monthly_material_rub=None):
+    """
+    Build mixed monthly series for dashboard:
+    - material_rub: monthly material costs in rubles (from costs sheet aggregates)
+    - labor_h: labor effort hours from the failures analysis sheet
+    """
+    ws = wb[wb.sheetnames[0]]
     rows = all_rows(ws)
+    monthly_material_rub = monthly_material_rub or {}
 
     header_idx = None
     month_starts = {}
     for i, r in enumerate(rows):
         vals = [cell(v) for v in r]
-        if vals and vals[0] and "Организация" in str(vals[0]):
+        hits = []
+        for j, v in enumerate(vals):
+            if v and any(m in str(v) for m in MONTHS_ORDER):
+                hits.append((str(v), j))
+        if len(hits) >= 3:
             header_idx = i
-            for j, v in enumerate(vals):
-                if v and any(m in str(v) for m in MONTHS_ORDER):
-                    month_starts[str(v)] = j
+            for month_label, j in hits:
+                month_starts[month_label] = j
             break
 
     if header_idx is None:
-        return []
+        return [
+            {"month": m, "material_rub": float(monthly_material_rub.get(m, 0.0) or 0.0), "labor_h": 0.0}
+            for m in MONTHS_ORDER
+        ]
 
     sub = rows[header_idx + 1]
-    # Подстрочник: на каждый месяц блок из 7 колонок (кол-во, пусто, длительность, пусто, мат, труд, всего)
-    mat_lab_j = {}
+    labor_j = {}
     for m, j_head in month_starts.items():
-        mat_j = j_head + 4
         lab_j = j_head + 5
         if lab_j < len(sub):
-            mat_lab_j[m] = (mat_j, lab_j)
+            labor_j[m] = lab_j
 
-    if not mat_lab_j:
-        return [{"month": m, "material": 0.0, "labor": 0.0} for m in MONTHS_ORDER]
+    if not labor_j:
+        return [
+            {"month": m, "material_rub": float(monthly_material_rub.get(m, 0.0) or 0.0), "labor_h": 0.0}
+            for m in MONTHS_ORDER
+        ]
 
-    mat = defaultdict(float)
-    lab = defaultdict(float)
+    labor_h = defaultdict(float)
     data_start = header_idx + 4
+    org_prefixes = ["ООО", "АО", "ЗАО", "ПАО"]
 
     for i in range(data_start, len(rows)):
         r = rows[i]
         first = cell(r[0])
         if first is None:
             continue
-        if any(str(first).startswith(p) for p in ["ООО", "АО", "ЗАО", "ПАО"]):
+        if any(str(first).startswith(p) for p in org_prefixes):
             continue
-        for m, (mj, lj) in mat_lab_j.items():
-            if mj < len(r):
-                mat[m] += parse_hours(r[mj])
+        for m, lj in labor_j.items():
             if lj < len(r):
-                lab[m] += parse_hours(r[lj])
+                labor_h[m] += parse_hours(r[lj])
 
-    # Часы по полям «материальные / трудовые затраты» в смысле длительности работ (лист «Анализ отказов»)
-    return [{"month": m, "material_h": mat.get(m, 0.0), "labor_h": lab.get(m, 0.0)} for m in MONTHS_ORDER]
-
+    return [
+        {
+            "month": m,
+            "material_rub": float(monthly_material_rub.get(m, 0.0) or 0.0),
+            "labor_h": labor_h.get(m, 0.0),
+        }
+        for m in MONTHS_ORDER
+    ]
 
 # ── Лист "Наработка на отказ" ──
 def parse_failures(wb):
@@ -687,7 +703,7 @@ def main():
     ktg_data = parse_ktg(wb_ktg)
     mtbf_h, mttr_h = parse_mtbf_mttr(wb_fail)
     repair_events = parse_repair_events(wb_fail)
-    material_labor = parse_material_labor_monthly(wb_analysis)
+    material_labor = parse_material_labor_monthly(wb_analysis, monthly_totals)
     wear_image = extract_wear_report_image()
     equipment_usage_pct = parse_equipment_list_usage_pct(sources["Список оборудования"])
     equipment_class_by_name = parse_equipment_list_classes(sources["Список оборудования"])

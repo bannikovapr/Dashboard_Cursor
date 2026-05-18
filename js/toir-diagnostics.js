@@ -150,8 +150,8 @@
       "Объекты с СВР не ниже этого уровня считаются «хвостом» медленных восстановлений; гипотеза срабатывает, если такой хвост непустой (минимум 5 объектов с СВР).",
     ],
     K4: [
-      "По месяцам суммируются часы трудовых и материальных работ; ищется пик и сравнение с медианой по месяцам.",
-      `Срабатывание, если пик ≥ ${THRESHOLDS.MATERIAL_LABOR_PEAK_FACTOR.toFixed(1)}× медианы (минимум 4 месяца данных).`,
+      "По месяцам отдельно анализируются материальные затраты (руб.) и трудозатраты (часы); для каждой метрики ищется пик и сравнение с медианой.",
+      `Срабатывание, если по любой из метрик пик ≥ ${THRESHOLDS.MATERIAL_LABOR_PEAK_FACTOR.toFixed(1)}× медианы (минимум 4 месяца данных).`,
     ],
   };
 
@@ -471,7 +471,7 @@
       .filter((r) => monthSet.has(r && r.month))
       .map((r) => ({
         month: r.month,
-        material_h: Number(r.material_h || r.material || 0),
+        material_rub: Number(r.material_rub || r.material || r.material_h || 0),
         labor_h: Number(r.labor_h || r.labor || 0),
       }));
 
@@ -1092,34 +1092,48 @@
   }
 
   function _analyzeK4(ctx) {
-    const title = "В структуре работ есть пиковая аномалия по часам";
+    const title = "В структуре затрат и труда есть пиковая аномалия";
     const action =
       "Сверить отчёты по трудозатратам/материалам в пиковом месяце; убедиться, что нет ошибок ввода или незакрытых нарядов.";
     if (ctx.materialLabor.length < 4) {
       return makeInsufficient("K4", title, action, "Нужны данные минимум за 4 месяца.");
     }
-    const totalH = ctx.materialLabor.map((r) => ({
+    const material = ctx.materialLabor.map((r) => ({
       month: r.month,
-      hours: r.material_h + r.labor_h,
+      value: Number(r.material_rub) || 0,
     }));
-    const totals = totalH.map((r) => r.hours);
-    const med = median(totals);
-    if (!med) return makeInsufficient("K4", title, action, "Медиана часов = 0.");
-    const sorted = [...totalH].sort((a, b) => b.hours - a.hours);
-    const peak = sorted[0];
-    const ratio = med > 0 ? peak.hours / med : null;
-    const triggered = ratio !== null && ratio >= THRESHOLDS.MATERIAL_LABOR_PEAK_FACTOR;
-    const summary = `Пиковый месяц «${peak.month}»: ${formatHours(peak.hours)} ч ` +
-      `(медиана — ${formatHours(med)} ч; пик в ${(ratio || 0).toFixed(1)}× выше).`;
+    const labor = ctx.materialLabor.map((r) => ({
+      month: r.month,
+      value: Number(r.labor_h) || 0,
+    }));
+    const medMaterial = median(material.map((r) => r.value));
+    const medLabor = median(labor.map((r) => r.value));
+    if (!medMaterial && !medLabor) {
+      return makeInsufficient("K4", title, action, "Медианы материалов/труда равны 0.");
+    }
+    const peakMaterial = [...material].sort((a, b) => b.value - a.value)[0];
+    const peakLabor = [...labor].sort((a, b) => b.value - a.value)[0];
+    const ratioMaterial = medMaterial > 0 ? peakMaterial.value / medMaterial : null;
+    const ratioLabor = medLabor > 0 ? peakLabor.value / medLabor : null;
+    const triggered =
+      (ratioMaterial !== null && ratioMaterial >= THRESHOLDS.MATERIAL_LABOR_PEAK_FACTOR)
+      || (ratioLabor !== null && ratioLabor >= THRESHOLDS.MATERIAL_LABOR_PEAK_FACTOR);
+    const summary = `Материалы: пик «${peakMaterial.month}» = ${formatMoney(peakMaterial.value)} руб. ` +
+      `(медиана ${formatMoney(medMaterial)} руб., ×${(ratioMaterial || 0).toFixed(1)}). ` +
+      `Труд: пик «${peakLabor.month}» = ${formatHours(peakLabor.value)} ч ` +
+      `(медиана ${formatHours(medLabor)} ч, ×${(ratioLabor || 0).toFixed(1)}).`;
     return makeRecommendation("K4", title,
       triggered ? STATUS.TRIGGERED : STATUS.NOT_TRIGGERED, summary, action, {
       evidence_notes: [],
       evidence: {
-        type: "chart",
-        chartType: "bar",
-        title: "Часы работ по месяцам (труд + материалы)",
-        categories: totalH.map((r) => r.month),
-        series: [{ name: "Часы", data: totalH.map((r) => r.hours) }],
+        type: "table",
+        title: "Материалы (руб.) и труд (ч) по месяцам",
+        columns: [
+          { key: "month", label: "Месяц" },
+          { key: "material_rub", label: "Материалы, руб.", format: "money" },
+          { key: "labor_h", label: "Труд, ч", format: "hours" },
+        ],
+        rows: ctx.materialLabor,
       },
     });
   }

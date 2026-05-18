@@ -31,33 +31,53 @@
   function applyBrandTokens(brandJson) {
     if (!brandJson) return;
     const r = document.documentElement.style;
-    if (brandJson.primary) r.setProperty("--brand-primary", brandJson.primary);
-    if (brandJson.background) r.setProperty("--brand-bg", brandJson.background);
-    if (brandJson.card) r.setProperty("--brand-card", brandJson.card);
-    if (brandJson.text) r.setProperty("--brand-text", brandJson.text);
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    if (isDark) {
+      ["--brand-primary", "--brand-bg", "--brand-card", "--brand-text"].forEach((p) => r.removeProperty(p));
+    }
     if (brandJson.accent) {
       r.setProperty("--brand-accent", brandJson.accent);
       r.setProperty("--chart-bar", brandJson.accent);
     }
+    if (isDark) return;
+    if (brandJson.primary) r.setProperty("--brand-primary", brandJson.primary);
+    if (brandJson.background) r.setProperty("--brand-bg", brandJson.background);
+    if (brandJson.card) r.setProperty("--brand-card", brandJson.card);
+    if (brandJson.text) r.setProperty("--brand-text", brandJson.text);
+  }
+
+  function cssVar(name, fallback) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name);
+    const t = (v && String(v).trim()) || "";
+    return t || fallback;
   }
 
   function getBaseChartOptionsLight() {
+    return getBaseChartOptions();
+  }
+
+  function getBaseChartOptions() {
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    const grid = cssVar("--chart-grid", isDark ? "#334155" : "#e2e8f0");
+    const axis = cssVar("--chart-axis", isDark ? "#94a3b8" : "#64748b");
+    const chartBg = cssVar("--brand-card", isDark ? "#1e293b" : "#ffffff");
     return {
       chart: {
         fontFamily: "Montserrat, system-ui, sans-serif",
         toolbar: { show: false },
         zoom: { enabled: false },
+        background: chartBg,
       },
-      theme: { mode: "light" },
+      theme: { mode: isDark ? "dark" : "light" },
       grid: {
-        borderColor: "#e2e8f0",
+        borderColor: grid,
         strokeDashArray: 4,
         padding: { left: 4, right: 32, top: 10, bottom: 28 },
       },
       dataLabels: { enabled: false },
       legend: { position: "top", horizontalAlign: "right", fontSize: "11px" },
       tooltip: {
-        theme: "light",
+        theme: isDark ? "dark" : "light",
         y: {
           formatter(val) {
             if (typeof val !== "number") return String(val);
@@ -67,12 +87,12 @@
       },
       xaxis: {
         labels: {
-          style: { colors: "#64748b", fontSize: "11px" },
+          style: { colors: axis, fontSize: "11px" },
           hideOverlappingLabels: true,
         },
       },
       yaxis: {
-        labels: { style: { colors: "#64748b", fontSize: "11px" } },
+        labels: { style: { colors: axis, fontSize: "11px" } },
       },
     };
   }
@@ -100,6 +120,7 @@
     formatCount,
     applyBrandTokens,
     getBaseChartOptionsLight,
+    getBaseChartOptions,
     getChartGreenPalette,
   };
 })(typeof window !== "undefined" ? window : globalThis);
