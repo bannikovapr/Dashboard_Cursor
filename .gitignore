@@ -19,3 +19,6 @@ __pycache__/
 models/**
 !models/README.md
 
+# Одноразовые дампы патчей из сессий (не используются дашбордом)
+scripts/_tx-patches/
+
