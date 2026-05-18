@@ -322,8 +322,8 @@ body {
 .filters-tabs {
   width: 100%;
   margin-top: 2px;
-  overflow-x: auto;
-  scrollbar-width: thin;
+  overflow-x: visible;
+  scrollbar-width: auto;
 }
 
 .filter-field {
@@ -358,11 +358,12 @@ body {
 
 .tabs {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 10px;
   margin: 0;
   padding: 0;
-  min-width: max-content;
+  min-width: 0;
+  width: 100%;
 }
 
 .tab {
@@ -370,6 +371,7 @@ body {
   font-size: 0.94rem;
   font-weight: 600;
   padding: 12px 20px;
+  white-space: nowrap;
   border-radius: 999px;
   border: 1px solid var(--brand-accent);
   background: var(--control-bg);
