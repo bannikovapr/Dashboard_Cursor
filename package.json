@@ -20,6 +20,7 @@
     "bench:ml-detector": "node scripts/bench-ml-detector.js",
     "logs:check": "node scripts/check-log-consistency.js",
     "logs:migrate": "node scripts/migrate-legacy-logs.js",
+    "demo:check": "node scripts/demo-check.js",
     "hygiene:check": "node scripts/hygiene-check.js",
     "hygiene:staged": "node scripts/hygiene-check.js --staged",
     "hooks:install": "node scripts/install-git-hooks.js",

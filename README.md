@@ -72,6 +72,14 @@
 
 ## Быстрый запуск
 
+### Показ заказчику (демо)
+
+Чек-лист, порты, AI и вход: **[docs/README-demo.md](docs/README-demo.md)**. Быстрая проверка данных без запуска сервера:
+
+```powershell
+npm run demo:check
+```
+
 ### Вариант 1: запуск для пользователя
 
 - Запустите `START_DASHBOARD.cmd`.
@@ -185,6 +193,7 @@ DLP_ALLOW_EPHEMERAL_KEY=true
 
 ## Скрипты
 
+- `npm run demo:check` — проверить наличие и целостность `data/toir.json` перед демонстрацией.
 - `npm run build:dashboard:json` — собрать/обновить `data/toir.json` из Excel-отчётов ТОиР.
   - **Как это устроено:** npm вызывает `node scripts/build-dashboard-json.js`. Тот ищет интерпретатор Python (`py -3` или `python`), из корня проекта запускает `scripts/analyze_toir.py` без аргументов.
   - Скрипт проверяет, что в `data/` лежат все обязательные `.xlsx` (семь отчётов ТОиР из `analyze_toir.py` и файлы по персоналу по правилам `personnel_reports.py`), открывает их через **openpyxl**, собирает KPI, графики и таблицы и **перезаписывает** `data/toir.json`. Блоки `personnelUsage` и `personnelOrgUsage` **всегда** заполняются из отчётов персонала.

@@ -128,6 +128,12 @@
     return new Set(allMonthKeys);
   }
 
+  function periodFilterLabel(periodValue) {
+    if (periodValue === "h1") return "1-е полугодие 2025";
+    if (periodValue === "h2") return "2-е полугодие 2025";
+    return "12 мес.";
+  }
+
   function clampNumber(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
@@ -158,6 +164,135 @@
     if (categoriesCount > 0) return categoriesCount;
     const firstSeries = Array.isArray(chartSpec?.series) ? chartSpec.series[0] : null;
     return Array.isArray(firstSeries?.data) ? firstSeries.data.length : 0;
+  }
+
+  function round2(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.round(n * 100) / 100;
+  }
+
+  function sumMonthlyBySet(monthlyMap, monthSet) {
+    if (!monthlyMap || typeof monthlyMap !== "object") return null;
+    let sum = 0;
+    let hasValues = false;
+    for (const [monthKey, raw] of Object.entries(monthlyMap)) {
+      if (monthSet && monthSet.size > 0 && !monthSet.has(monthKey)) continue;
+      const value = Number(raw) || 0;
+      sum += value;
+      hasValues = true;
+    }
+    return hasValues ? round2(sum) : null;
+  }
+
+  function resolvePersonnelMonths(personnelOrgPayload) {
+    const metaMonths = Array.isArray(personnelOrgPayload?.meta?.months)
+      ? personnelOrgPayload.meta.months.map((m) => String(m || "").trim()).filter(Boolean)
+      : [];
+    if (metaMonths.length > 0) return metaMonths;
+
+    const rowWithMonths = (personnelOrgPayload?.table?.rows || []).find((r) => r && r.monthly_fact_h);
+    if (rowWithMonths && rowWithMonths.monthly_fact_h && typeof rowWithMonths.monthly_fact_h === "object") {
+      const keys = Object.keys(rowWithMonths.monthly_fact_h);
+      if (keys.length > 0) return keys;
+    }
+
+    const departmentWithMonths = (personnelOrgPayload?.departments || []).find((r) => r && r.monthly_fact_h);
+    if (
+      departmentWithMonths &&
+      departmentWithMonths.monthly_fact_h &&
+      typeof departmentWithMonths.monthly_fact_h === "object"
+    ) {
+      const keys = Object.keys(departmentWithMonths.monthly_fact_h);
+      if (keys.length > 0) return keys;
+    }
+    return [];
+  }
+
+  function buildPersonnelRowsForPeriod(personnelPayload, personnelOrgPayload, periodValue) {
+    const fallbackRows = Array.isArray(personnelPayload?.table?.rows) ? personnelPayload.table.rows : [];
+    const orgRows = Array.isArray(personnelOrgPayload?.table?.rows) ? personnelOrgPayload.table.rows : [];
+    if (orgRows.length === 0) return fallbackRows;
+
+    const months = resolvePersonnelMonths(personnelOrgPayload);
+    const monthSet = monthSetFromPeriod(periodValue || "all", months);
+    const byEmployee = new Map();
+
+    for (const row of orgRows) {
+      const employee = String(row?.employee || "").trim();
+      if (!employee) continue;
+      const factFromMonths = sumMonthlyBySet(row?.monthly_fact_h, monthSet);
+      const planFromMonths = sumMonthlyBySet(row?.monthly_plan_h, monthSet);
+      const fact = factFromMonths != null ? factFromMonths : round2(Number(row?.fact_h) || 0);
+      const plan = planFromMonths != null ? planFromMonths : round2(Number(row?.plan_h) || 0);
+      if (!byEmployee.has(employee)) {
+        byEmployee.set(employee, { employee, fact_h: 0, plan_h: 0 });
+      }
+      const acc = byEmployee.get(employee);
+      acc.fact_h = round2(acc.fact_h + fact);
+      acc.plan_h = round2(acc.plan_h + plan);
+    }
+
+    const rows = [...byEmployee.values()].map((r) => ({
+      employee: r.employee,
+      fact_h: round2(r.fact_h),
+      plan_h: round2(r.plan_h),
+      utilization_pct: r.plan_h > 0 ? round2((r.fact_h / r.plan_h) * 100) : null,
+    }));
+    rows.sort((a, b) => b.fact_h - a.fact_h);
+    return rows;
+  }
+
+  function buildPersonnelChartFromRows(rows, fallbackChart) {
+    if (!Array.isArray(rows) || rows.length === 0) return fallbackChart || null;
+    const topRows = [...rows].sort((a, b) => b.fact_h - a.fact_h).slice(0, 10);
+    return {
+      type: "chart",
+      title: fallbackChart?.title || "",
+      chartType: fallbackChart?.chartType || "bar",
+      categories: topRows.map((r) => r.employee),
+      series: [
+        { name: "Факт, ч", data: topRows.map((r) => round2(r.fact_h)) },
+        { name: "План, ч", data: topRows.map((r) => round2(r.plan_h)) },
+      ],
+    };
+  }
+
+  function buildDepartmentRowsForPeriod(personnelOrgPayload, periodValue) {
+    const departments = Array.isArray(personnelOrgPayload?.departments) ? personnelOrgPayload.departments : [];
+    if (departments.length === 0) return [];
+
+    const months = resolvePersonnelMonths(personnelOrgPayload);
+    const monthSet = monthSetFromPeriod(periodValue || "all", months);
+    const rows = departments.map((row) => {
+      const factFromMonths = sumMonthlyBySet(row?.monthly_fact_h, monthSet);
+      const planFromMonths = sumMonthlyBySet(row?.monthly_plan_h, monthSet);
+      const fact = factFromMonths != null ? factFromMonths : round2(Number(row?.fact_h) || 0);
+      const plan = planFromMonths != null ? planFromMonths : round2(Number(row?.plan_h) || 0);
+      return {
+        organization: String(row?.organization || ""),
+        department: String(row?.department || ""),
+        fact_h: round2(fact),
+        plan_h: round2(plan),
+      };
+    });
+    rows.sort((a, b) => b.fact_h - a.fact_h);
+    return rows;
+  }
+
+  function buildDepartmentChartFromRows(rows, fallbackChart) {
+    if (!Array.isArray(rows) || rows.length === 0) return fallbackChart || null;
+    const top = rows.slice(0, 12);
+    return {
+      type: "chart",
+      title: fallbackChart?.title || "",
+      chartType: fallbackChart?.chartType || "bar",
+      categories: top.map((r) => `${r.department} · ${r.organization}`),
+      series: [
+        { name: "Факт, ч", data: top.map((r) => round2(r.fact_h)) },
+        { name: "План, ч", data: top.map((r) => round2(r.plan_h)) },
+      ],
+    };
   }
 
   function buildEquipmentRows(data, monthSet, classNameFilter) {
@@ -403,11 +538,13 @@
     return escapeHtml(s).replace(/\n/g, " ");
   }
 
-  function renderPersonnelDlp(payload) {
+  function renderPersonnelDlp(payload, options = {}) {
     const section = document.getElementById("personnelDlpSection");
     if (!section) return;
 
-    const rows = payload?.table?.rows;
+    const periodValue = options?.periodValue || "all";
+    const personnelOrgPayload = options?.personnelOrgPayload || null;
+    const rows = buildPersonnelRowsForPeriod(payload, personnelOrgPayload, periodValue);
     if (!Array.isArray(rows) || rows.length === 0) {
       section.hidden = true;
       return;
@@ -418,14 +555,15 @@
     const sub = document.getElementById("personnelDlpSub");
     if (sub) {
       const source = payload?.meta?.source || "встроено в data/toir.json";
-      const count = Number(payload?.meta?.employees_count) || rows.length;
-      sub.textContent = `Источник: ${source} · сотрудников: ${count}`;
+      const count = rows.length;
+      sub.textContent = `Source: ${source} · employees: ${count} · slice: ${periodFilterLabel(periodValue)}`;
     }
 
     const chartBox = document.getElementById("chartPersonnelDlp");
     if (chartBox) {
-      if (payload?.chart && typeof Charts?.renderAgentChart === "function") {
-        const points = getSeriesPointCount(payload.chart);
+      const chartSpec = buildPersonnelChartFromRows(rows, payload?.chart || null);
+      if (chartSpec && typeof Charts?.renderAgentChart === "function") {
+        const points = getSeriesPointCount(chartSpec);
         const personnelHeight = getChartHeight("#chartPersonnelDlp", {
           fallback: 320,
           min: 260,
@@ -435,17 +573,18 @@
           perItem: 20,
           basePad: 96,
         });
-        Charts.renderAgentChart(payload.chart, "#chartPersonnelDlp", personnelHeight);
+        Charts.renderAgentChart(chartSpec, "#chartPersonnelDlp", personnelHeight);
       } else {
         chartBox.textContent = "В data/toir.json нет блока personnelUsage или нет данных для графика";
       }
     }
   }
 
-  function renderPersonnelOrgUsage(payload) {
+  function renderPersonnelOrgUsage(payload, options = {}) {
     const section = document.getElementById("personnelOrgSection");
     if (!section) return;
 
+    const periodValue = options?.periodValue || "all";
     const rows = payload?.table?.rows;
     if (!Array.isArray(rows) || rows.length === 0) {
       section.hidden = true;
@@ -459,14 +598,16 @@
       const source = payload?.meta?.source || "встроено в data/toir.json";
       const orgCount = Number(payload?.meta?.organizations_count) || 0;
       const depCount = Number(payload?.meta?.departments_count) || 0;
-      const empCount = Number(payload?.meta?.employees_count) || rows.length;
-      sub.textContent = `Источник: ${source} · организаций: ${orgCount} · подразделений: ${depCount} · сотрудников: ${empCount}`;
+      const empCount = rows.length;
+      sub.textContent = `Source: ${source} · orgs: ${orgCount} · departments: ${depCount} · employees: ${empCount} · slice: ${periodFilterLabel(periodValue)}`;
     }
 
     const chartBox = document.getElementById("chartPersonnelOrg");
     if (chartBox) {
-      if (payload?.chart && typeof Charts?.renderAgentChart === "function") {
-        const points = getSeriesPointCount(payload.chart);
+      const departmentRows = buildDepartmentRowsForPeriod(payload, periodValue);
+      const chartSpec = buildDepartmentChartFromRows(departmentRows, payload?.chart || null);
+      if (chartSpec && typeof Charts?.renderAgentChart === "function") {
+        const points = getSeriesPointCount(chartSpec);
         const personnelHeight = getChartHeight("#chartPersonnelOrg", {
           fallback: 320,
           min: 260,
@@ -476,7 +617,7 @@
           perItem: 20,
           basePad: 96,
         });
-        Charts.renderAgentChart(payload.chart, "#chartPersonnelOrg", personnelHeight);
+        Charts.renderAgentChart(chartSpec, "#chartPersonnelOrg", personnelHeight);
       } else {
         chartBox.textContent = "В data/toir.json нет блока personnelOrgUsage или нет данных для графика";
       }
@@ -1065,6 +1206,16 @@
       });
     }
 
+    function renderPersonnelChartsForCurrentFilters() {
+      const personnelData =
+        liveData.personnelUsage && typeof liveData.personnelUsage === "object" ? liveData.personnelUsage : null;
+      const personnelOrgData =
+        liveData.personnelOrgUsage && typeof liveData.personnelOrgUsage === "object" ? liveData.personnelOrgUsage : null;
+      const periodValue = periodSel?.value || "all";
+      renderPersonnelDlp(personnelData, { periodValue, personnelOrgPayload: personnelOrgData });
+      renderPersonnelOrgUsage(personnelOrgData, { periodValue });
+    }
+
     const drain = () => {
       const monthSet = monthSetFromPeriod(periodSel?.value || "all", allMonths);
       const cls = classSel?.value || "__all__";
@@ -1328,6 +1479,7 @@
       renderTables(agg, topProblemRows(liveData, monthSet, cls));
 
       renderDiagnostics(liveData, periodSel?.value || "all", cls);
+      renderPersonnelChartsForCurrentFilters();
 
       document.getElementById("footerSource").textContent =
         `Источник: ${liveData.meta?.source || "—"} → data/toir.json · ${liveData.meta?.period || ""}`;
@@ -1355,8 +1507,6 @@
         next.personnelUsage && typeof next.personnelUsage === "object" ? next.personnelUsage : null;
       const personnelOrgData =
         next.personnelOrgUsage && typeof next.personnelOrgUsage === "object" ? next.personnelOrgUsage : null;
-      renderPersonnelDlp(personnelData);
-      renderPersonnelOrgUsage(personnelOrgData);
       assistantContextLive = buildAssistantContext(next, personnelData, personnelOrgData);
     };
 
@@ -1380,14 +1530,6 @@
         const cur = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
         applyDashboardTheme(cur === "dark" ? "light" : "dark");
         drain();
-        const personnelData =
-          liveData.personnelUsage && typeof liveData.personnelUsage === "object" ? liveData.personnelUsage : null;
-        const personnelOrgData =
-          liveData.personnelOrgUsage && typeof liveData.personnelOrgUsage === "object"
-            ? liveData.personnelOrgUsage
-            : null;
-        renderPersonnelDlp(personnelData);
-        renderPersonnelOrgUsage(personnelOrgData);
         renderDiagnostics(liveData, periodSel?.value || "all", classSel?.value || "__all__");
         Charts.resizeAll();
       });
@@ -2442,8 +2584,6 @@
       const personnelOrgData =
         data.personnelOrgUsage && typeof data.personnelOrgUsage === "object" ? data.personnelOrgUsage : null;
       wireUi(data);
-      renderPersonnelDlp(personnelData);
-      renderPersonnelOrgUsage(personnelOrgData);
       const assistantContext = buildAssistantContext(data, personnelData, personnelOrgData);
       wireAi(data, assistantContext);
     } catch (e) {
