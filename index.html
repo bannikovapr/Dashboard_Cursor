@@ -92,26 +92,41 @@
             <span class="header-chip">Класс: <b id="chipClass">Все классы</b></span>
             <span class="header-chip">Объектов: <b id="chipEquipCount">—</b></span>
           </div>
-          <div class="filters-row">
-            <div class="filter-field">
-              <label for="panelPeriod">Период</label>
-              <select id="panelPeriod" aria-label="Период">
-                <option value="all">Последние 12 месяцев</option>
-                <option value="h1">1-е полугодие 2025</option>
-                <option value="h2">2-е полугодие 2025</option>
-              </select>
+          <div class="filters-row-host" id="filtersRowHost">
+            <div class="mobile-filter-bar" id="mobileFilterBar">
+              <button
+                type="button"
+                class="btn-mobile-filters"
+                id="btnMobileFilters"
+                aria-expanded="false"
+                aria-controls="mobileFiltersSheet"
+              >
+                Фильтры и разделы
+              </button>
             </div>
-            <div class="filter-field">
-              <label for="panelClass">Класс оборудования</label>
-              <select id="panelClass" aria-label="Класс оборудования"></select>
+            <div id="filtersRowSlot" class="filters-row-slot">
+            <div class="filters-row" id="filtersRow">
+              <div class="filter-field">
+                <label for="panelPeriod">Период</label>
+                <select id="panelPeriod" aria-label="Период">
+                  <option value="all">Последние 12 месяцев</option>
+                  <option value="h1">1-е полугодие 2025</option>
+                  <option value="h2">2-е полугодие 2025</option>
+                </select>
+              </div>
+              <div class="filter-field">
+                <label for="panelClass">Класс оборудования</label>
+                <select id="panelClass" aria-label="Класс оборудования"></select>
+              </div>
+              <div class="tabs filters-tabs" role="tablist" aria-label="Разделы дашборда">
+                <button type="button" class="tab" data-tab="summary" aria-selected="true">Сводка</button>
+                <button type="button" class="tab" data-tab="costs">Затраты</button>
+                <button type="button" class="tab" data-tab="reliability">Надёжность</button>
+                <button type="button" class="tab" data-tab="equipment">Оборудование</button>
+                <button type="button" class="tab" data-tab="diagnostics">Диагностики</button>
+                <button type="button" class="tab" data-tab="reports">Отчёт ТОиР</button>
+              </div>
             </div>
-            <div class="tabs filters-tabs" role="tablist" aria-label="Разделы дашборда">
-              <button type="button" class="tab" data-tab="summary" aria-selected="true">Сводка</button>
-              <button type="button" class="tab" data-tab="costs">Затраты</button>
-              <button type="button" class="tab" data-tab="reliability">Надёжность</button>
-              <button type="button" class="tab" data-tab="equipment">Оборудование</button>
-              <button type="button" class="tab" data-tab="diagnostics">Диагностики</button>
-              <button type="button" class="tab" data-tab="reports">Отчёт ТОиР</button>
             </div>
           </div>
         </header>
@@ -375,19 +390,56 @@
       </div>
 
       <aside class="card ai-panel layout-sidebar" aria-label="AI-ассистент">
-        <h2>AI-ассистент</h2>
+        <div class="ai-panel-top">
+          <h2>AI-ассистент</h2>
+          <button
+            type="button"
+            class="btn-ai-history"
+            id="btnAiHistory"
+            hidden
+            aria-expanded="false"
+            aria-controls="aiScrollBody"
+          >
+            История
+          </button>
+        </div>
         <div class="ai-mode-toggle" id="aiModeToggle">
           <button type="button" class="ai-mode-btn active" data-mode="agent">Агент</button>
           <button type="button" class="ai-mode-btn" data-mode="chat">Быстрый ответ</button>
         </div>
         <p class="ai-desc" id="aiDesc">Агент анализирует данные, выполняет вычисления и строит графики/таблицы.</p>
-        <div class="ai-log" id="aiLog"></div>
-        <div id="aiArtifacts" class="ai-artifacts" hidden></div>
-        <div class="ai-input-row">
-          <textarea id="aiInput" placeholder='Задайте вопрос, например: "Покажи топ-5 по затратам в виде графика"' rows="3"></textarea>
+        <div class="ai-scroll-body" id="aiScrollBody">
+          <div class="ai-log" id="aiLog"></div>
+          <div id="aiArtifacts" class="ai-artifacts" hidden></div>
+        </div>
+        <div class="ai-input-row ai-input-row--dock">
+          <textarea id="aiInput" placeholder='Задайте вопрос, например: «топ-5 по затратам»' rows="2"></textarea>
           <button type="button" class="btn-cta" id="aiSend">Спросить</button>
         </div>
       </aside>
+
+      <div
+        id="mobileFiltersSheet"
+        class="mobile-filters-sheet"
+        hidden
+        aria-hidden="true"
+      >
+        <div class="mobile-filters-sheet__backdrop" id="mobileFiltersBackdrop" tabindex="-1"></div>
+        <div
+          class="mobile-filters-sheet__panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mobileFiltersTitle"
+        >
+          <div class="mobile-filters-sheet__head">
+            <h3 id="mobileFiltersTitle">Фильтры и разделы</h3>
+            <button type="button" class="mobile-filters-sheet__close" id="btnMobileFiltersClose" aria-label="Закрыть">
+              ×
+            </button>
+          </div>
+          <div class="mobile-filters-sheet__body" id="mobileFiltersSheetBody"></div>
+        </div>
+      </div>
 
       <footer class="footer-note" id="footerSource">Загрузка…</footer>
     </div>

@@ -2,6 +2,7 @@
 
 const { TOOL_DEFINITIONS } = require("./tools");
 const dataStore = require("./data-store");
+const { enrichUserPayload } = require("./intent-router");
 
 function buildToolDescriptionsBlock() {
   return TOOL_DEFINITIONS.map((t) => {
@@ -37,7 +38,10 @@ function buildAgentSystemPrompt() {
 9. Если пользователь просит прогноз, используй инструмент forecast_metric. Горизонт прогноза обязателен: если пользователь не указал, используй 3 месяца по умолчанию и явно укажи это в fact.
 10. В прогнозном ответе обязательно отделяй факт исторических данных и прогнозные значения; помечай прогноз как расчетную оценку.
 11. Если пользователь просит топ-N, соблюдай N. Если данных меньше N — явно укажи доступное количество.
-12. Если вопрос про ремонты/работы сотрудников, используй данные по персоналу и обязательно свяжи вывод со структурой работ по месяцам (трудозатраты).
+12. Для топ-N по объектам НЕ используй analysis_leaders и analysis_causes (там всегда только 3 строки). Бери equipment_costs (затраты) или defects (отказы/проблемные объекты) с orderBy и limit=N.
+13. В сообщении пользователя есть routing_hints — учитывай top_n, rankings[], multiple_charts_required и do_not_use_datasets_for_top.
+14. Если просят два графика (например топ-N по КТГ и по затратам) — сделай два отдельных build_chart (не одну диаграмму с двумя сериями). КТГ: dataset ktg, orderBy avg_ktg. Затраты: equipment_costs, orderBy total.
+15. Если вопрос про ремонты/работы сотрудников, используй данные по персоналу и обязательно свяжи вывод со структурой работ по месяцам (трудозатраты).
 
 ## Доступные наборы данных
 
@@ -89,7 +93,7 @@ ${toolBlock}
 }
 
 function buildUserMessage(question, filters) {
-  return JSON.stringify({ question, filters: filters || {} });
+  return enrichUserPayload(question, filters);
 }
 
 function buildToolResultMessage(results) {

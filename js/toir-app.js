@@ -1107,6 +1107,76 @@
   const TABS_WITHOUT_GLOBAL_TABLES = new Set(["diagnostics"]);
   const TABS_WITHOUT_KPI_BLOCK = new Set(["reports"]);
 
+  const MOBILE_LAYOUT_MQ = window.matchMedia("(max-width: 899px)");
+
+  function wireMobileFiltersSheet(handlers) {
+    const filtersRow = document.getElementById("filtersRow");
+    const slot = document.getElementById("filtersRowSlot");
+    const sheetBody = document.getElementById("mobileFiltersSheetBody");
+    const sheet = document.getElementById("mobileFiltersSheet");
+    const btnOpen = document.getElementById("btnMobileFilters");
+    const btnClose = document.getElementById("btnMobileFiltersClose");
+    const backdrop = document.getElementById("mobileFiltersBackdrop");
+    if (!filtersRow || !sheet || !sheetBody) return { closeSheet: () => {} };
+
+    function applyPlacement() {
+      if (MOBILE_LAYOUT_MQ.matches) {
+        document.body.classList.add("mobile-filters-mode");
+        if (filtersRow.parentElement !== sheetBody) sheetBody.appendChild(filtersRow);
+      } else {
+        closeSheet(false);
+        document.body.classList.remove("mobile-filters-mode", "mobile-filters-sheet-open");
+        if (slot && filtersRow.parentElement !== slot) slot.appendChild(filtersRow);
+      }
+    }
+
+    function openSheet() {
+      if (!MOBILE_LAYOUT_MQ.matches) return;
+      sheet.hidden = false;
+      sheet.setAttribute("aria-hidden", "false");
+      document.body.classList.add("mobile-filters-sheet-open");
+      if (btnOpen) btnOpen.setAttribute("aria-expanded", "true");
+    }
+
+    function closeSheet(restoreFocus) {
+      sheet.hidden = true;
+      sheet.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("mobile-filters-sheet-open");
+      if (btnOpen) {
+        btnOpen.setAttribute("aria-expanded", "false");
+        if (restoreFocus !== false) btnOpen.focus();
+      }
+    }
+
+    applyPlacement();
+
+    if (btnOpen) btnOpen.addEventListener("click", openSheet);
+    if (btnClose) btnClose.addEventListener("click", () => closeSheet());
+    if (backdrop) backdrop.addEventListener("click", () => closeSheet());
+
+    filtersRow.addEventListener("click", (e) => {
+      const tabBtn = e.target.closest(".tab");
+      if (!tabBtn || !MOBILE_LAYOUT_MQ.matches) return;
+      closeSheet(false);
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !sheet.hidden) closeSheet();
+    });
+
+    const onMqChange = () => {
+      applyPlacement();
+      if (typeof handlers?.onLayoutChange === "function") handlers.onLayoutChange();
+    };
+    if (typeof MOBILE_LAYOUT_MQ.addEventListener === "function") {
+      MOBILE_LAYOUT_MQ.addEventListener("change", onMqChange);
+    } else if (typeof MOBILE_LAYOUT_MQ.addListener === "function") {
+      MOBILE_LAYOUT_MQ.addListener(onMqChange);
+    }
+
+    return { closeSheet, applyPlacement };
+  }
+
   function applyTab(name) {
     document.querySelectorAll(".tab").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === name));
     document.querySelectorAll(".panel-charts").forEach((p) => {
@@ -1122,6 +1192,7 @@
     }
     const layoutEl = document.querySelector(".layout");
     if (layoutEl) layoutEl.dataset.activeTab = name;
+    syncMobileAiDock();
   }
 
   function wireUi(initialData) {
@@ -1135,6 +1206,13 @@
     const classSel = document.getElementById("panelClass");
     const layoutMain = document.querySelector(".layout-main");
     let resizeTimer = null;
+
+    wireMobileFiltersSheet({
+      onLayoutChange: () => {
+        queueChartsResize();
+        syncMobileAiDock();
+      },
+    });
 
     function queueChartsResize() {
       if (resizeTimer) clearTimeout(resizeTimer);
@@ -2297,7 +2375,13 @@
     container.appendChild(card);
   }
 
-  function renderArtifactChart(artifact, container) {
+  function chartArtifactsInBatch(container) {
+    const list = container?._toirArtifacts;
+    if (!Array.isArray(list)) return [];
+    return list.filter((a) => a && a.type === "chart");
+  }
+
+  function renderArtifactChart(artifact, container, chartCountInBatch) {
     const card = document.createElement("div");
     card.className = "ai-artifact-card";
     const title = document.createElement("div");
@@ -2319,7 +2403,8 @@
 
     const expandBtn = document.createElement("button");
     expandBtn.className = "ai-artifact-expand-btn";
-    expandBtn.textContent = "Развернуть";
+    expandBtn.textContent =
+      chartCountInBatch > 1 ? "Развернуть все" : "Развернуть";
     expandBtn.addEventListener("click", () => expandArtifact(artifact));
     card.appendChild(expandBtn);
 
@@ -2334,22 +2419,51 @@
     const container = typeof target === "string" ? document.querySelector(target) : target;
     if (!container) return;
     container.innerHTML = "";
+    container._toirArtifacts = null;
     if (!artifacts || !artifacts.length) {
       container.hidden = true;
       return;
     }
     container.hidden = false;
+    container._toirArtifacts = artifacts;
+    const chartCount = artifacts.filter((a) => a && a.type === "chart").length;
     for (const art of artifacts) {
       if (art.type === "table") renderArtifactTable(art, container);
-      else if (art.type === "chart") renderArtifactChart(art, container);
+      else if (art.type === "chart") renderArtifactChart(art, container, chartCount);
     }
+    syncMobileAiDock();
+  }
+
+  function artifactsToExpand(clicked) {
+    const container = document.getElementById("aiArtifacts");
+    if (clicked?.type === "chart") {
+      const charts = chartArtifactsInBatch(container);
+      if (charts.length > 1) return charts;
+    }
+    return [clicked];
+  }
+
+  function closeAgentWorkspace(ws, chartSelectors) {
+    if (Array.isArray(chartSelectors)) {
+      for (const sel of chartSelectors) {
+        if (typeof Charts.dispose === "function") Charts.dispose(sel);
+      }
+    }
+    ws.hidden = true;
+    ws.innerHTML = "";
+    ws.classList.remove("agent-workspace--fullscreen");
+    document.body.classList.remove("agent-workspace-open");
   }
 
   function expandArtifact(artifact) {
     const ws = document.getElementById("agentWorkspace");
     if (!ws) return;
+    const batch = artifactsToExpand(artifact);
+    const mobileExpand = MOBILE_LAYOUT_MQ.matches;
+    const chartSelectors = [];
     ws.innerHTML = "";
     ws.hidden = false;
+    ws.classList.toggle("agent-workspace--fullscreen", mobileExpand);
 
     const card = document.createElement("div");
     card.className = "card agent-workspace-card";
@@ -2357,16 +2471,51 @@
     const header = document.createElement("div");
     header.className = "agent-workspace-header";
     const h3 = document.createElement("h3");
-    h3.textContent = artifact.title || "Артефакт агента";
+    const chartBatch = batch.filter((a) => a.type === "chart");
+    if (chartBatch.length > 1) {
+      h3.textContent = `Графики агента (${chartBatch.length})`;
+    } else {
+      h3.textContent = artifact.title || "Артефакт агента";
+    }
     header.appendChild(h3);
     const closeBtn = document.createElement("button");
     closeBtn.className = "agent-workspace-close";
     closeBtn.textContent = "\u00d7";
-    closeBtn.addEventListener("click", () => { ws.hidden = true; ws.innerHTML = ""; });
+    closeBtn.setAttribute("aria-label", "Закрыть");
+    closeBtn.addEventListener("click", () => closeAgentWorkspace(ws, chartSelectors));
     header.appendChild(closeBtn);
     card.appendChild(header);
 
-    if (artifact.type === "table") {
+    if (chartBatch.length > 1) {
+      ws.appendChild(card);
+      const chartHeight = mobileExpand ? 380 : 320;
+      chartBatch.forEach((art, idx) => {
+        const block = document.createElement("div");
+        block.className = "agent-workspace-artifact-block";
+        const sub = document.createElement("h4");
+        sub.className = "agent-workspace-artifact-title";
+        sub.textContent = art.title || `График ${idx + 1}`;
+        block.appendChild(sub);
+        const chartBox = document.createElement("div");
+        const chartId = `wsChart_${Date.now()}_${idx}`;
+        chartBox.id = chartId;
+        const sel = `#${chartId}`;
+        chartSelectors.push(sel);
+        chartBox.style.minHeight = mobileExpand ? "min(42vh, 380px)" : `${chartHeight}px`;
+        block.appendChild(chartBox);
+        card.appendChild(block);
+        requestAnimationFrame(() => {
+          Charts.renderAgentChart(art, sel, chartHeight);
+        });
+      });
+      if (mobileExpand) document.body.classList.add("agent-workspace-open");
+      if (!mobileExpand) ws.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
+    const single = batch[0] || artifact;
+
+    if (single.type === "table") {
       const wrap = document.createElement("div");
       wrap.className = "ai-artifact-table-wrap";
       const table = document.createElement("table");
@@ -2398,25 +2547,124 @@
       table.appendChild(tbody);
       wrap.appendChild(table);
       card.appendChild(wrap);
-    } else if (artifact.type === "chart") {
+      ws.appendChild(card);
+    } else if (single.type === "chart") {
       const chartBox = document.createElement("div");
       const chartId = `wsChart_${Date.now()}`;
       chartBox.id = chartId;
-      chartBox.style.minHeight = "350px";
+      const sel = `#${chartId}`;
+      chartSelectors.push(sel);
+      chartBox.style.minHeight = mobileExpand ? "min(55vh, 420px)" : "350px";
       card.appendChild(chartBox);
       ws.appendChild(card);
+      if (mobileExpand) document.body.classList.add("agent-workspace-open");
       requestAnimationFrame(() => {
-        Charts.renderAgentChart(artifact, `#${chartId}`, 350);
+        Charts.renderAgentChart(single, sel, mobileExpand ? 420 : 350);
       });
-      ws.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (!mobileExpand) ws.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
 
     ws.appendChild(card);
-    ws.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (mobileExpand) document.body.classList.add("agent-workspace-open");
+    if (!mobileExpand) ws.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  let syncMobileAiDock = () => {};
+
+  function wireMobileAiDock() {
+    const panel = document.querySelector(".layout-sidebar.ai-panel");
+    const log = document.getElementById("aiLog");
+    const artifactsContainer = document.getElementById("aiArtifacts");
+    const btnHistory = document.getElementById("btnAiHistory");
+    const layout = document.querySelector(".layout");
+
+    if (!panel) return;
+
+    function hasContent() {
+      const hasLog = !!(log && log.children.length);
+      const hasArt =
+        !!(artifactsContainer && !artifactsContainer.hidden && artifactsContainer.children.length);
+      return hasLog || hasArt;
+    }
+
+    function updateDockOffset() {
+      if (!document.body.classList.contains("ai-mobile-dock-active")) {
+        document.documentElement.style.removeProperty("--ai-mobile-dock-offset");
+        return;
+      }
+      requestAnimationFrame(() => {
+        const h = panel.getBoundingClientRect().height;
+        document.documentElement.style.setProperty("--ai-mobile-dock-offset", `${Math.ceil(h) + 10}px`);
+      });
+    }
+
+    function sync() {
+      const mobile = MOBILE_LAYOUT_MQ.matches;
+      const reports = layout?.dataset.activeTab === "reports";
+      document.body.classList.toggle("ai-mobile-dock-active", mobile && !reports);
+
+      const hc = hasContent();
+      panel.classList.toggle("ai-panel--has-content", hc);
+
+      if (btnHistory) {
+        btnHistory.hidden = !mobile || !hc;
+        const expanded = panel.classList.contains("ai-panel--expanded");
+        btnHistory.setAttribute("aria-expanded", expanded ? "true" : "false");
+        btnHistory.textContent = expanded ? "Свернуть" : "История";
+      }
+
+      if (mobile && hc && !panel.classList.contains("ai-panel--user-collapsed")) {
+        panel.classList.add("ai-panel--expanded");
+      }
+
+      if (!hc) {
+        panel.classList.remove("ai-panel--expanded", "ai-panel--user-collapsed");
+      }
+
+      updateDockOffset();
+    }
+
+    syncMobileAiDock = sync;
+
+    if (btnHistory) {
+      btnHistory.addEventListener("click", () => {
+        const willExpand = !panel.classList.contains("ai-panel--expanded");
+        panel.classList.toggle("ai-panel--expanded", willExpand);
+        panel.classList.toggle("ai-panel--user-collapsed", !willExpand);
+        sync();
+      });
+    }
+
+    if (log) {
+      const mo = new MutationObserver(sync);
+      mo.observe(log, { childList: true });
+    }
+    if (artifactsContainer) {
+      const moArt = new MutationObserver(sync);
+      moArt.observe(artifactsContainer, {
+        childList: true,
+        attributes: true,
+        attributeFilter: ["hidden"],
+      });
+    }
+
+    const onMq = () => {
+      panel.classList.remove("ai-panel--user-collapsed");
+      sync();
+    };
+    if (typeof MOBILE_LAYOUT_MQ.addEventListener === "function") {
+      MOBILE_LAYOUT_MQ.addEventListener("change", onMq);
+    } else if (typeof MOBILE_LAYOUT_MQ.addListener === "function") {
+      MOBILE_LAYOUT_MQ.addListener(onMq);
+    }
+
+    window.addEventListener("resize", updateDockOffset);
+    sync();
   }
 
   function wireAi(data, assistantContext) {
+    wireMobileAiDock();
     assistantContextLive = assistantContext;
     const log = document.getElementById("aiLog");
     const input = document.getElementById("aiInput");
@@ -2424,6 +2672,7 @@
     const artifactsContainer = document.getElementById("aiArtifacts");
     const modeToggle = document.getElementById("aiModeToggle");
     const descEl = document.getElementById("aiDesc");
+    const aiPanel = document.querySelector(".layout-sidebar.ai-panel");
 
     const modeDescriptions = {
       agent: "Агент анализирует данные, выполняет вычисления и строит графики/таблицы.",
@@ -2439,7 +2688,11 @@
         currentAiMode = mode;
         modeToggle.querySelectorAll(".ai-mode-btn").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
         if (descEl) descEl.textContent = modeDescriptions[mode] || "";
-        if (artifactsContainer) { artifactsContainer.hidden = true; artifactsContainer.innerHTML = ""; }
+        if (artifactsContainer) {
+          artifactsContainer.hidden = true;
+          artifactsContainer.innerHTML = "";
+        }
+        syncMobileAiDock();
       });
     }
 
@@ -2449,12 +2702,14 @@
       div.innerHTML = text;
       log.appendChild(div);
       log.scrollTop = log.scrollHeight;
+      syncMobileAiDock();
       return div;
     }
 
     const submitQuestion = async () => {
       const q = (input?.value || "").trim();
       if (!q) return;
+      if (aiPanel) aiPanel.classList.remove("ai-panel--user-collapsed");
       pushBubble(escapeHtml(q), false);
       input.value = "";
 
@@ -2487,13 +2742,38 @@
             agentResult && agentResult.ok === false && agentResult.errorMessage
               ? `<div class="agent-trace">${escapeHtml(agentResult.errorMessage)}</div>`
               : "";
-          const { fact, conclusion, action } = await askCloudLlm(q, assistantContextLive);
+          const errCode = agentResult?.errorCode || "";
+          const skipCloudFallback =
+            errCode === "rate_limited" ||
+            errCode === "provider_error" ||
+            /429|лимит запросов|too many requests/i.test(agentResult?.errorMessage || "");
+
+          let fact;
+          let conclusion;
+          let action;
+          let traceExtra = "";
+
+          if (skipCloudFallback) {
+            const mapped = apiErrorAnswer(
+              errCode === "rate_limited" ? 429 : 502,
+              { errorCode: errCode || "provider_error", message: agentResult?.errorMessage }
+            );
+            fact = mapped.fact;
+            conclusion = mapped.conclusion;
+            action = mapped.action;
+            traceExtra =
+              '<div class="agent-trace">Режим «Быстрый ответ» не вызывался: тот же лимит API.</div>';
+          } else {
+            ({ fact, conclusion, action } = await askCloudLlm(q, assistantContextLive));
+            traceExtra = '<div class="agent-trace">Fallback: быстрый ответ</div>';
+          }
+
           pending.innerHTML =
             agentErr +
             `<div class="block-title">Факт</div>${escapeHtml(fact)}` +
             `<div class="block-title" style="margin-top:8px">Вывод</div>${escapeHtml(conclusion)}` +
             `<div class="block-title" style="margin-top:8px">Действие</div>${escapeHtml(action)}` +
-            '<div class="agent-trace">Fallback: быстрый ответ</div>';
+            traceExtra;
         }
       } else {
         const pending = pushBubble('<div class="block-title">Ответ</div>Думаю\u2026', true);
@@ -2504,6 +2784,7 @@
           `<div class="block-title" style="margin-top:8px">Действие</div>${escapeHtml(action)}`;
       }
       log.scrollTop = log.scrollHeight;
+      syncMobileAiDock();
     };
 
     btn?.addEventListener("click", submitQuestion);

@@ -3,6 +3,13 @@
 const dataStore = require("./data-store");
 const { executeTool, TOOL_DEFINITIONS } = require("./tools");
 const { buildAgentSystemPrompt, buildUserMessage, buildToolResultMessage } = require("./prompts");
+const {
+  parseTopN,
+  pickTopRanking,
+  buildQuestionHints,
+  wantsMultipleCharts,
+  parseRequestedTopRankings,
+} = require("./intent-router");
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MAX_STEPS = 5;
@@ -283,6 +290,138 @@ async function protectToolResultsForModel(toolResults, dlpSession) {
   };
 }
 
+function buildTopNChartArtifact(ranking, topN) {
+  const result = dataStore.queryDataset(ranking.dataset, {
+    orderBy: { field: ranking.valueField, dir: "desc" },
+    limit: topN,
+  });
+  if (result.error || !Array.isArray(result.rows) || result.rows.length === 0) {
+    return null;
+  }
+
+  const rows = result.rows;
+  const actualN = rows.length;
+  const categories = rows.map((r) => String(r[ranking.nameField] || "—"));
+  const values = rows.map((r) => Number(r[ranking.valueField]) || 0);
+
+  return {
+    type: "chart",
+    title: `Топ-${actualN} оборудования ${ranking.titleSuffix}`,
+    chartType: ranking.chartType || "bar",
+    categories,
+    series: [{ name: ranking.seriesLabel, data: values }],
+    meta: { rankingKey: ranking.key, topN: actualN },
+  };
+}
+
+function buildDeterministicTopNArtifacts(question, topN) {
+  const rankings = parseRequestedTopRankings(question);
+  if (wantsMultipleCharts(question) && rankings.length >= 2) {
+    const charts = rankings
+      .map((r) => buildTopNChartArtifact(r, topN))
+      .filter(Boolean);
+    return { artifacts: charts, rows: [], ranking: rankings[0], actualN: topN };
+  }
+
+  const ranking = pickTopRanking(question);
+  const chartArtifact = buildTopNChartArtifact(ranking, topN);
+  if (!chartArtifact) {
+    return { artifacts: [], rows: [], ranking };
+  }
+
+  const result = dataStore.queryDataset(ranking.dataset, {
+    orderBy: { field: ranking.valueField, dir: "desc" },
+    limit: topN,
+  });
+  const rows = result.rows || [];
+
+  const tableArtifact = {
+    type: "table",
+    title: chartArtifact.title,
+    columns: [
+      { key: ranking.nameField, label: "Объект" },
+      { key: ranking.valueField, label: ranking.seriesLabel },
+    ],
+    rows: rows.map((r) => ({
+      [ranking.nameField]: r[ranking.nameField],
+      [ranking.valueField]: r[ranking.valueField],
+    })),
+  };
+
+  return { artifacts: [chartArtifact, tableArtifact], rows, ranking, actualN: rows.length };
+}
+
+function countChartCategories(artifacts) {
+  let max = 0;
+  for (const a of artifacts || []) {
+    if (a?.type === "chart" && Array.isArray(a.categories)) {
+      max = Math.max(max, a.categories.length);
+    }
+  }
+  return max;
+}
+
+function usedRestrictedTopDataset(allToolResults) {
+  for (const step of allToolResults || []) {
+    for (const tr of step || []) {
+      if (tr.tool !== "query_data") continue;
+      const ds = tr.params?.dataset || tr.result?.dataset;
+      if (ds === "analysis_leaders" || ds === "analysis_causes") return true;
+    }
+  }
+  return false;
+}
+
+function countTopCharts(artifacts) {
+  return (artifacts || []).filter(
+    (a) => a?.type === "chart" && /топ[-\s]?\d/i.test(String(a.title || ""))
+  ).length;
+}
+
+function enforceTopNArtifacts(question, artifacts, allToolResults) {
+  const topN = parseTopN(question);
+  if (!topN) return artifacts;
+
+  const rankings = parseRequestedTopRankings(question);
+  const multi = wantsMultipleCharts(question) && rankings.length >= 2;
+
+  if (multi) {
+    const built = buildDeterministicTopNArtifacts(question, topN);
+    const builtCharts = (built.artifacts || []).filter((a) => a?.type === "chart");
+    if (!builtCharts.length) return artifacts;
+
+    const other = (artifacts || []).filter(
+      (a) => !(a?.type === "chart" && /топ[-\s]?\d/i.test(String(a.title || "")))
+    );
+    return [...builtCharts, ...other];
+  }
+
+  if (topN <= 3) return artifacts;
+
+  const chartCats = countChartCategories(artifacts);
+  const needsFix = chartCats < topN || usedRestrictedTopDataset(allToolResults);
+  if (!needsFix) return artifacts;
+
+  const built = buildDeterministicTopNArtifacts(question, topN);
+  if (!built.artifacts?.length) return artifacts;
+
+  const hints = buildQuestionHints(question);
+  const preferChart = hints.visualize_required || /график|диаграмм|chart/i.test(question);
+  const replacement = preferChart
+    ? built.artifacts.find((a) => a.type === "chart") || built.artifacts[0]
+    : built.artifacts.find((a) => a.type === "table") || built.artifacts[0];
+
+  const withoutConflictingCharts = (artifacts || []).filter(
+    (a) =>
+      !(
+        a?.type === "chart" &&
+        /топ[-\s]?\d/i.test(String(a.title || ""))
+      )
+  );
+
+  return [replacement, ...withoutConflictingCharts.filter((a) => a !== replacement)];
+}
+
 function collectArtifacts(allToolResults) {
   const artifacts = [];
   for (const step of allToolResults) {
@@ -520,12 +659,21 @@ async function runAgent({ question, filters, requestId, dlpSession, modelTraceHo
       const autoArtifacts = collectArtifacts(allToolResults);
       const explicitArtifacts = Array.isArray(parsed.artifacts) ? parsed.artifacts.filter((a) => a && a.type) : [];
 
-      const mergedArtifacts = [...autoArtifacts];
+      let mergedArtifacts = [...autoArtifacts];
       for (const ea of explicitArtifacts) {
         const isDuplicate = mergedArtifacts.some(
           (a) => a.type === ea.type && a.title === ea.title
         );
         if (!isDuplicate) mergedArtifacts.push(ea);
+      }
+
+      mergedArtifacts = enforceTopNArtifacts(question, mergedArtifacts, allToolResults);
+      const topN = parseTopN(question);
+      if (topN) {
+        trace.top_n_requested = topN;
+        trace.top_n_chart_categories = countChartCategories(mergedArtifacts);
+        trace.top_n_charts_count = countTopCharts(mergedArtifacts);
+        trace.multiple_charts = wantsMultipleCharts(question);
       }
 
       return {
@@ -553,6 +701,10 @@ async function runAgent({ question, filters, requestId, dlpSession, modelTraceHo
   if (!trace.failureReason) {
     trace.failureReason = trace.steps >= MAX_STEPS ? "max_steps_exceeded" : "agent_stopped_without_answer";
   }
+
+  const deterministic = tryDeterministicResponse(question, requestId, trace);
+  if (deterministic) return deterministic;
+
   return {
     ok: false,
     requestId,
@@ -562,6 +714,41 @@ async function runAgent({ question, filters, requestId, dlpSession, modelTraceHo
   };
 }
 
-module.exports = { runAgent };
+/** Графики топ-N / два графика без LLM — при 429 или сбое провайдера. */
+function tryDeterministicResponse(question, requestId, trace) {
+  const topN = parseTopN(question);
+  if (!topN) return null;
+
+  const built = buildDeterministicTopNArtifacts(question, topN);
+  let artifacts = enforceTopNArtifacts(question, built.artifacts || [], []);
+  const charts = artifacts.filter((a) => a?.type === "chart");
+  if (!charts.length) return null;
+
+  const rankings = parseRequestedTopRankings(question);
+  const metricList =
+    rankings.length >= 2
+      ? rankings.map((r) => r.titleSuffix.replace(/^по\s+/i, "")).join(" и ")
+      : (rankings[0] || pickTopRanking(question)).titleSuffix.replace(/^по\s+/i, "");
+
+  return {
+    ok: true,
+    requestId,
+    answer: {
+      fact: `По данным дашборда построено ${charts.length} график(а): топ-${topN} ${metricList}.`,
+      conclusion:
+        "Текст от нейросети недоступен (лимит или ошибка OpenRouter). Диаграммы собраны локально из выгрузки toir.json.",
+      action:
+        "Подождите 1–2 минуты и повторите запрос для полного анализа или проверьте OPENROUTER_MODEL / квоту в кабинете OpenRouter.",
+    },
+    artifacts,
+    trace: {
+      ...trace,
+      deterministic_fallback: true,
+      toolsUsed: [...(trace.toolsUsed || []), "deterministic_charts"],
+    },
+  };
+}
+
+module.exports = { runAgent, tryDeterministicResponse };
 
 

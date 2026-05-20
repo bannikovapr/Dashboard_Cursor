@@ -119,15 +119,19 @@ function buildDatasets(raw) {
   }));
 
   const eqCosts = raw.tables?.equipmentCosts || {};
-  ds.equipment_costs = Object.entries(eqCosts).map(([name, info]) => ({
-    name,
-    class: resolveEquipmentClass(raw, name),
-    total: Number(info?.total || 0),
-    months: info?.months || {},
-  }));
+  ds.equipment_costs = Object.entries(eqCosts)
+    .filter(([name]) => !isSummaryEquipmentName(name))
+    .map(([name, info]) => ({
+      name,
+      class: resolveEquipmentClass(raw, name),
+      total: Number(info?.total || 0),
+      months: info?.months || {},
+    }));
 
   const ktgMap = raw.tables?.ktg || {};
-  ds.ktg = Object.entries(ktgMap).map(([name, info]) => ({
+  ds.ktg = Object.entries(ktgMap)
+    .filter(([name]) => !isSummaryEquipmentName(name))
+    .map(([name, info]) => ({
     name,
     class: resolveEquipmentClass(raw, name),
     avg_ktg: Number(info?.avg_ktg || 0),
@@ -205,8 +209,16 @@ const DATASET_SCHEMA = {
   equipment_costs: { fields: ["name", "class", "total", "months"], description: "Затраты по единицам оборудования с помесячной разбивкой" },
   ktg: { fields: ["name", "class", "avg_ktg", "total_downtime_h", "monthly_ktg"], description: "КТГ (коэффициент технической готовности) по оборудованию" },
   defects: { fields: ["name", "class", "count"], description: "Количество дефектов/отказов по оборудованию" },
-  analysis_leaders: { fields: ["equipment", "total_rub"], description: "Топ-3 лидера по затратам" },
-  analysis_causes: { fields: ["cause", "count"], description: "Топ-3 причин отказов" },
+  analysis_leaders: {
+    fields: ["equipment", "total_rub"],
+    description:
+      "Справочно: только 3 предрасчитанных лидера из отчёта. Для топ-N (N≠3) используйте equipment_costs с orderBy total и limit=N",
+  },
+  analysis_causes: {
+    fields: ["cause", "count"],
+    description:
+      "Справочно: только 3 предрасчитанные причины. Для топ-N причин используйте failure_causes с orderBy count и limit=N",
+  },
   personnel_utilization: {
     fields: ["employee", "fact_h", "plan_h", "utilization_pct"],
     description: "Объем выполненных ремонтных работ по сотрудникам за год (факт/план часов, выполнение)",

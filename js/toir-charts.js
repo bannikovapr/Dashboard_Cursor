@@ -606,7 +606,8 @@
     if (Array.isArray(spec.colors) && spec.colors.length) return spec.colors;
     const palette = categoricalPalette();
     const n = series.length || 1;
-    const isHorizontalBar = type === "bar" && categories.length > 6;
+    const isHorizontalBar = type === "bar" && categories.length >= 4;
+    if (type === "bar" && n === 1) return [chartBarColor()];
     if (!isHorizontalBar) return palette.slice(0, n);
     if (n === 1) return [chartBarColor()];
     if (n === 2) {
@@ -628,7 +629,8 @@
     const palette = categoricalPalette();
     const series = spec.series || [];
     const axisTint = chartAxisColor();
-    const layoutType = type === "bar" && categories.length > 6 ? "bar" : type;
+    const isHorizontalBar = type === "bar" && categories.length >= 4;
+    const layoutType = isHorizontalBar ? "bar" : type;
     const layoutOnce = chartLayout(height, layoutType);
 
     const isPie = type === "pie" || type === "donut";
@@ -647,8 +649,6 @@
       apexBySelector[targetSel].render();
       return;
     }
-
-    const isHorizontalBar = type === "bar" && categories.length > 6;
 
     const opts = {
       ...layoutOnce,
@@ -733,5 +733,6 @@
     renderMaterialLaborStacked,
     renderAgentChart,
     resizeAll,
+    dispose,
   };
 })(typeof window !== "undefined" ? window : globalThis);
