@@ -1118,6 +1118,8 @@
     const btnClose = document.getElementById("btnMobileFiltersClose");
     const backdrop = document.getElementById("mobileFiltersBackdrop");
     if (!filtersRow || !sheet || !sheetBody) return { closeSheet: () => {} };
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let closeTimer = null;
 
     function applyPlacement() {
       if (MOBILE_LAYOUT_MQ.matches) {
@@ -1132,20 +1134,44 @@
 
     function openSheet() {
       if (!MOBILE_LAYOUT_MQ.matches) return;
+      if (closeTimer) {
+        clearTimeout(closeTimer);
+        closeTimer = null;
+      }
       sheet.hidden = false;
       sheet.setAttribute("aria-hidden", "false");
+      sheet.classList.remove("is-closing");
       document.body.classList.add("mobile-filters-sheet-open");
       if (btnOpen) btnOpen.setAttribute("aria-expanded", "true");
+      // Force the closed transform to be committed before opening, so the sheet
+      // animates reliably even when requestAnimationFrame is throttled.
+      void sheet.offsetHeight;
+      sheet.classList.add("is-open");
     }
 
     function closeSheet(restoreFocus) {
-      sheet.hidden = true;
+      if (sheet.hidden) return;
+      sheet.classList.remove("is-open");
+      sheet.classList.add("is-closing");
       sheet.setAttribute("aria-hidden", "true");
-      document.body.classList.remove("mobile-filters-sheet-open");
       if (btnOpen) {
         btnOpen.setAttribute("aria-expanded", "false");
-        if (restoreFocus !== false) btnOpen.focus();
       }
+
+      const finish = () => {
+        sheet.hidden = true;
+        sheet.classList.remove("is-closing");
+        document.body.classList.remove("mobile-filters-sheet-open");
+        closeTimer = null;
+        if (btnOpen && restoreFocus !== false) btnOpen.focus();
+      };
+
+      if (reduceMotion.matches) {
+        finish();
+        return;
+      }
+
+      closeTimer = setTimeout(finish, 280);
     }
 
     applyPlacement();
@@ -2580,6 +2606,31 @@
     const layout = document.querySelector(".layout");
 
     if (!panel) return;
+    if (!panel.id) panel.id = "aiPanel";
+
+    const panelTop = panel.querySelector(".ai-panel-top") || panel;
+    let btnHide = document.getElementById("btnAiDockHide");
+    if (!btnHide) {
+      btnHide = document.createElement("button");
+      btnHide.type = "button";
+      btnHide.id = "btnAiDockHide";
+      btnHide.className = "btn-ai-dock-hide";
+      btnHide.setAttribute("aria-controls", panel.id);
+      btnHide.textContent = "Скрыть";
+      panelTop.appendChild(btnHide);
+    }
+
+    let btnLauncher = document.getElementById("btnAiMobileLauncher");
+    if (!btnLauncher) {
+      btnLauncher = document.createElement("button");
+      btnLauncher.type = "button";
+      btnLauncher.id = "btnAiMobileLauncher";
+      btnLauncher.className = "ai-mobile-launcher";
+      btnLauncher.setAttribute("aria-controls", panel.id);
+      btnLauncher.textContent = "Ассистент";
+      btnLauncher.hidden = true;
+      document.body.appendChild(btnLauncher);
+    }
 
     function hasContent() {
       const hasLog = !!(log && log.children.length);
@@ -2594,15 +2645,35 @@
         return;
       }
       requestAnimationFrame(() => {
-        const h = panel.getBoundingClientRect().height;
-        document.documentElement.style.setProperty("--ai-mobile-dock-offset", `${Math.ceil(h) + 10}px`);
+        const hidden = document.body.classList.contains("ai-mobile-dock-hidden");
+        const measured = hidden && btnLauncher && !btnLauncher.hidden ? btnLauncher : panel;
+        const h = measured.getBoundingClientRect().height;
+        document.documentElement.style.setProperty("--ai-mobile-dock-offset", `${Math.ceil(h) + 12}px`);
       });
+    }
+
+    function setDockHidden(hidden) {
+      const dockable = MOBILE_LAYOUT_MQ.matches && layout?.dataset.activeTab !== "reports";
+      document.body.classList.toggle("ai-mobile-dock-hidden", !!hidden && dockable);
+      sync();
     }
 
     function sync() {
       const mobile = MOBILE_LAYOUT_MQ.matches;
       const reports = layout?.dataset.activeTab === "reports";
-      document.body.classList.toggle("ai-mobile-dock-active", mobile && !reports);
+      const dockable = mobile && !reports;
+      document.body.classList.toggle("ai-mobile-dock-active", dockable);
+      if (!dockable) document.body.classList.remove("ai-mobile-dock-hidden");
+      const dockHidden = dockable && document.body.classList.contains("ai-mobile-dock-hidden");
+
+      if (btnHide) {
+        btnHide.hidden = !dockable;
+        btnHide.setAttribute("aria-expanded", dockHidden ? "false" : "true");
+      }
+      if (btnLauncher) {
+        btnLauncher.hidden = !dockable || !dockHidden;
+        btnLauncher.setAttribute("aria-expanded", dockHidden ? "false" : "true");
+      }
 
       const hc = hasContent();
       panel.classList.toggle("ai-panel--has-content", hc);
@@ -2614,7 +2685,7 @@
         btnHistory.textContent = expanded ? "Свернуть" : "История";
       }
 
-      if (mobile && hc && !panel.classList.contains("ai-panel--user-collapsed")) {
+      if (mobile && hc && !dockHidden && !panel.classList.contains("ai-panel--user-collapsed")) {
         panel.classList.add("ai-panel--expanded");
       }
 
@@ -2627,13 +2698,22 @@
 
     syncMobileAiDock = sync;
 
-    if (btnHistory) {
+    if (btnHistory && !btnHistory._toirMobileDockBound) {
+      btnHistory._toirMobileDockBound = true;
       btnHistory.addEventListener("click", () => {
         const willExpand = !panel.classList.contains("ai-panel--expanded");
         panel.classList.toggle("ai-panel--expanded", willExpand);
         panel.classList.toggle("ai-panel--user-collapsed", !willExpand);
         sync();
       });
+    }
+    if (btnHide && !btnHide._toirMobileDockBound) {
+      btnHide._toirMobileDockBound = true;
+      btnHide.addEventListener("click", () => setDockHidden(true));
+    }
+    if (btnLauncher && !btnLauncher._toirMobileDockBound) {
+      btnLauncher._toirMobileDockBound = true;
+      btnLauncher.addEventListener("click", () => setDockHidden(false));
     }
 
     if (log) {
@@ -2651,6 +2731,7 @@
 
     const onMq = () => {
       panel.classList.remove("ai-panel--user-collapsed");
+      document.body.classList.remove("ai-mobile-dock-hidden");
       sync();
     };
     if (typeof MOBILE_LAYOUT_MQ.addEventListener === "function") {
