@@ -1,22 +1,29 @@
 (function (global) {
   const U = global.ToirUtils || {};
 
+  /** Фирменный зелёный Desnol: assets/brand.json, desnol-mark.svg */
+  const BRAND_ACCENT_FALLBACK = "#1ed760";
+
   const chartBarColor = () =>
-    getComputedStyle(document.documentElement).getPropertyValue("--chart-bar").trim() || "#1ed760";
+    getComputedStyle(document.documentElement).getPropertyValue("--chart-bar").trim() || BRAND_ACCENT_FALLBACK;
 
   const chartAxisColor = () =>
     getComputedStyle(document.documentElement).getPropertyValue("--chart-axis").trim() || "#64748b";
 
-  const categoricalPalette = () => [
-    "#1e88e5", // blue
-    "#10b981", // green
-    "#f59e0b", // amber
-    "#f43f5e", // rose
-    "#7e57c2", // purple
-    "#0ea5e9", // sky
-    "#22c55e", // emerald
-    "#fbbf24", // yellow
-  ];
+  /** Многоцветные диаграммы: один оттенок зелёного — как --chart-bar / бренд. */
+  const categoricalPalette = () => {
+    const accent = chartBarColor();
+    return [
+      "#1e88e5",
+      accent,
+      "#f59e0b",
+      "#f43f5e",
+      "#7e57c2",
+      "#0ea5e9",
+      "#6366f1",
+      "#fbbf24",
+    ];
+  };
 
   const apexBySelector = {};
 
@@ -528,7 +535,7 @@
         { name: "Трудозатраты, ч", type: "column", data: laborHours },
       ],
       stroke: { width: [0, 0], curve: "straight" },
-      colors: [pal[0], pal[1]],
+      colors: [pal[0], chartBarColor()],
       xaxis: { categories: labels, labels: { rotate: -30 } },
       yaxis: [
         {
@@ -592,6 +599,23 @@
     if (abs >= 1e6) return `${(num / 1e6).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} млн`;
     if (abs >= 1e3) return `${(num / 1e3).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} тыс`;
     return num.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+  }
+
+  /** Цвета серий: горизонтальные bar как на дашборде; факт/план — синий + --chart-bar. */
+  function resolveAgentChartColors(spec, series, categories, type) {
+    if (Array.isArray(spec.colors) && spec.colors.length) return spec.colors;
+    const palette = categoricalPalette();
+    const n = series.length || 1;
+    const isHorizontalBar = type === "bar" && categories.length > 6;
+    if (!isHorizontalBar) return palette.slice(0, n);
+    if (n === 1) return [chartBarColor()];
+    if (n === 2) {
+      const names = series.map((s) => String(s?.name || "").toLowerCase());
+      if (names.some((x) => /факт/.test(x)) && names.some((x) => /план/.test(x))) {
+        return [palette[0], chartBarColor()];
+      }
+    }
+    return palette.slice(0, n);
   }
 
   function renderAgentChart(spec, targetSel, height = 260) {
@@ -674,7 +698,7 @@
           formatter: (v) => Number(v).toLocaleString("ru-RU", { maximumFractionDigits: 2 }),
         },
       },
-      colors: palette.slice(0, series.length || 1),
+      colors: resolveAgentChartColors(spec, series, categories, type),
       stroke:
         type === "line" || type === "area"
           ? {

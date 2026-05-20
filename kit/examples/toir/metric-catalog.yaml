@@ -6,7 +6,7 @@ default_period: "last_12_months"
 
 kpis:
   - id: kpiTotal
-    label: "Общие затраты ТОИР"
+    label: "Общие затраты ТОиР"
     unit: "₽"
     formula: "sum(costs_monthly.total)"
     dataset: "costs_monthly"

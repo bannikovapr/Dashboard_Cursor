@@ -36,8 +36,11 @@
       ["--brand-primary", "--brand-bg", "--brand-card", "--brand-text"].forEach((p) => r.removeProperty(p));
     }
     if (brandJson.accent) {
-      r.setProperty("--brand-accent", brandJson.accent);
-      r.setProperty("--chart-bar", brandJson.accent);
+      const accent = String(brandJson.accent).trim();
+      r.setProperty("--brand-accent", accent);
+      r.setProperty("--chart-bar", accent);
+      r.setProperty("--chart-g-5", accent);
+      r.setProperty("--chart-g-8", accent);
     }
     if (isDark) return;
     if (brandJson.primary) r.setProperty("--brand-primary", brandJson.primary);
@@ -105,7 +108,7 @@
       g("--chart-g-2", "#166534"),
       g("--chart-g-3", "#15803d"),
       g("--chart-g-4", "#16a34a"),
-      g("--chart-g-5", "#22c55e"),
+      g("--chart-g-5", "#1ed760"),
       g("--chart-g-6", "#4ade80"),
       g("--chart-g-7", "#86efac"),
       g("--chart-g-8", "#1ed760"),

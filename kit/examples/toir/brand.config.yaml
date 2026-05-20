@@ -3,7 +3,7 @@
 version: "1.0"
 
 app:
-  title: "Стратегический дашборд ТОИР"
+  title: "Аналитик ТОиР"
   subtitle: ""
   favicon: "assets/favicon.ico"
   logo:

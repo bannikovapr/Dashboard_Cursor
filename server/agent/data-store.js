@@ -37,6 +37,12 @@ function classifyClass(name) {
   return "РџСЂРѕС‡РµРµ";
 }
 
+/** Служебные строки сводки в таблицах Excel (не единицы оборудования). */
+function isSummaryEquipmentName(name) {
+  const n = String(name || "").trim().toLowerCase();
+  return n === "итого" || n === "total" || n === "всего";
+}
+
 function resolveEquipmentClass(raw, name) {
   if (name == null || name === "") return classifyClass(name);
   const nm = String(name);
@@ -131,7 +137,7 @@ function buildDatasets(raw) {
 
   const defectsMap = raw.tables?.equipmentDefects || {};
   ds.defects = Object.entries(defectsMap)
-    .filter(([name]) => name !== "РС‚РѕРіРѕ")
+    .filter(([name]) => !isSummaryEquipmentName(name))
     .map(([name, count]) => ({
       name,
       class: resolveEquipmentClass(raw, name),
@@ -219,8 +225,9 @@ const DATASET_SCHEMA = {
   },
 };
 function init() {
-  const raw = loadRaw();
-  buildDatasets(raw);
+  loadRaw();
+  _datasets = null;
+  buildDatasets(loadRaw());
 }
 
 function getKpis() {

@@ -21,7 +21,7 @@
   --chart-g-2: #166534;
   --chart-g-3: #15803d;
   --chart-g-4: #16a34a;
-  --chart-g-5: #22c55e;
+  --chart-g-5: #1ed760;
   --chart-g-6: #4ade80;
   --chart-g-7: #86efac;
   --chart-g-8: #1ed760;
@@ -54,7 +54,7 @@ html[data-theme="dark"] {
   --brand-bg: #0f172a;
   --brand-card: #1e293b;
   --brand-text: #e2e8f0;
-  --brand-accent: #22c55e;
+  --brand-accent: #1ed760;
   --page-bg: #0b1120;
   --border: #334155;
   --muted: #94a3b8;
@@ -66,24 +66,24 @@ html[data-theme="dark"] {
   --header-btn-text: #f1f5f9;
   --chart-grid: #334155;
   --chart-axis: #94a3b8;
-  --chart-bar: #22c55e;
-  --chart-g-1: #22c55e;
-  --chart-g-2: #4ade80;
-  --chart-g-3: #86efac;
-  --chart-g-4: #a7f3d0;
-  --chart-g-5: #6ee7b7;
-  --chart-g-6: #34d399;
-  --chart-g-7: #10b981;
-  --chart-g-8: #22c55e;
+  --chart-bar: #1ed760;
+  --chart-g-1: #14532d;
+  --chart-g-2: #166534;
+  --chart-g-3: #15803d;
+  --chart-g-4: #16a34a;
+  --chart-g-5: #1ed760;
+  --chart-g-6: #4ade80;
+  --chart-g-7: #86efac;
+  --chart-g-8: #1ed760;
   --shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
   --control-bg: #1e293b;
   --control-text: #6ee7b7;
   --control-text-active: #0f172a;
-  --control-bg-active: #22c55e;
+  --control-bg-active: #1ed760;
   --report-preview-bg: #1a2332;
   --report-preview-changed-bg: #1e3a5f;
-  --report-list-hover-bg: rgba(34, 197, 94, 0.16);
-  --report-list-active-bg: rgba(34, 197, 94, 0.26);
+  --report-list-hover-bg: rgba(30, 215, 96, 0.16);
+  --report-list-active-bg: rgba(30, 215, 96, 0.26);
 }
 
 *,

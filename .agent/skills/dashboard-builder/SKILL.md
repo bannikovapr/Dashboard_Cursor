@@ -4,7 +4,7 @@ description: >
   Use this skill when building/updating the TOIR strategic dashboard UI and rules:
   final header composition, unified controls style, KPI status coloring, chart color policy,
   tab logic, AI panel layout, and data-driven rendering from data/toir.json.
-  Triggers: «перестрой дашборд», «обнови шапку/графики/фильтры», «сделай стратегический дашборд ТОИР».
+  Triggers: «перестрой дашборд», «обнови шапку/графики/фильтры», «сделай стратегический дашборд ТОиР».
 ---
 
 # Dashboard Builder — Финальный регламент
@@ -36,7 +36,7 @@ description: >
 - Белая карточка (`.header-card`) без маркетинговых слоганов.
 - Верхний ряд: слева в одну линию **логотип + заголовок**.
   - Логотип в левом верхнем углу.
-  - Заголовок справа от логотипа: `Стратегический дашборд ТОИР`.
+  - Заголовок справа от логотипа: `Стратегический дашборд ТОиР`.
 - Ниже: строка контекстных чипов
   - `Период`, `Класс`, `Объектов`, `Обновлено`.
 - Ниже: единый блок фильтров:
