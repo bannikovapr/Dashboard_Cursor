@@ -3237,7 +3237,7 @@
         btnLauncher.setAttribute("aria-expanded", dockHidden ? "false" : "true");
       }
       if (dockBar) {
-        dockBar.hidden = !dockable || dockHidden;
+        dockBar.hidden = !dockable;
       }
 
       const hc = hasContent();

@@ -884,6 +884,8 @@ button,
 .btn-mobile-dock-menu,
 .btn-header-menu-action,
 .btn-header-menu,
+.nav-card-toolbar .btn-header-refresh,
+.nav-card-toolbar .btn-header-theme,
 .btn-report-toolbar,
 .report-list-item,
 .report-export-summary,
@@ -903,6 +905,8 @@ button::after,
 .btn-mobile-dock-menu::after,
 .btn-header-menu-action::after,
 .btn-header-menu::after,
+.nav-card-toolbar .btn-header-refresh::after,
+.nav-card-toolbar .btn-header-theme::after,
 .btn-report-toolbar::after,
 .report-list-item::after,
 .report-export-summary::after,
@@ -927,6 +931,8 @@ button:active:not(:disabled)::after,
 .btn-mobile-dock-menu:active::after,
 .btn-header-menu-action:active:not(:disabled)::after,
 .btn-header-menu:active::after,
+.nav-card-toolbar .btn-header-refresh:active:not(:disabled)::after,
+.nav-card-toolbar .btn-header-theme:active::after,
 .btn-report-toolbar:active:not(:disabled)::after,
 .report-list-item:active::after,
 .report-export-summary:active::after,
@@ -4788,29 +4794,26 @@ body.mobile-filters-sheet-open {
     min-height: 0;
   }
 
+  /* Как «Спросить»: зелёная обводка, без заливки при нажатии/hover */
+  .nav-card-toolbar .btn-header-refresh,
   .nav-card-toolbar .btn-header-theme {
     -webkit-tap-highlight-color: transparent;
     background: var(--control-bg);
     color: var(--control-text);
+    border: 1px solid var(--brand-accent);
   }
 
+  .nav-card-toolbar .btn-header-refresh:hover:not(:disabled),
+  .nav-card-toolbar .btn-header-refresh:focus-visible,
+  .nav-card-toolbar .btn-header-refresh:active:not(:disabled),
   .nav-card-toolbar .btn-header-theme:hover,
   .nav-card-toolbar .btn-header-theme:focus-visible,
-  .nav-card-toolbar .btn-header-theme:active {
+  .nav-card-toolbar .btn-header-theme:active,
+  .nav-card-toolbar .btn-header-theme[aria-pressed="true"],
+  .nav-card-toolbar .btn-header-refresh[aria-pressed="true"] {
     background: var(--control-bg);
     color: var(--control-text);
     border-color: var(--brand-accent);
-    transform: none;
-  }
-
-  .nav-card-toolbar .btn-header-theme[aria-pressed="true"] {
-    background: var(--control-bg-active);
-    color: var(--control-text-active);
-    border-color: var(--control-bg-active);
-  }
-
-  .nav-card-toolbar .btn-header-refresh:active:not(:disabled) {
-    transform: none;
   }
 
   body.mobile-filters-mode .filters-row-host .header-chips {
@@ -4915,18 +4918,52 @@ body.mobile-filters-sheet-open {
     font-size: 1.05rem;
   }
 
+  .layout-main #tablesRow,
+  .layout-main > .tables-grid {
+    margin-bottom: 0;
+  }
+
+  body.ai-mobile-dock-active .layout-main {
+    padding-bottom: 0;
+    margin-bottom: 0;
+  }
+
+  body.ai-mobile-dock-active .footer-note {
+    margin: 0;
+    padding: 4px 0 0;
+    line-height: 1.2;
+  }
+
+  /* Не занимать место в колонке layout; визуал — у fixed-шторки ниже */
+  body.ai-mobile-dock-active .layout > .layout-sidebar.ai-panel {
+    flex: 0 0 0;
+    min-height: 0;
+    margin: 0 !important;
+    overflow: visible;
+  }
+
   .table-card {
-    padding: 10px 10px 12px;
+    padding: 8px 8px 4px;
+  }
+
+  .table-card .head {
+    margin-bottom: 4px;
+    gap: 4px;
+  }
+
+  .table-card .table-sub {
+    margin-top: 2px;
   }
 
   .tables-grid {
-    gap: var(--mobile-block-gap);
-    margin-bottom: var(--mobile-block-gap);
+    gap: 6px;
+    margin-bottom: 0;
   }
 
   .tables-grid .table-wrap {
     overflow-x: visible;
     max-width: 100%;
+    margin-bottom: 0;
   }
 
   .tables-grid table {
@@ -4938,8 +4975,8 @@ body.mobile-filters-sheet-open {
 
   .tables-grid th,
   .tables-grid td {
-    padding: 8px 6px;
-    line-height: 1.25;
+    padding: 5px 5px;
+    line-height: 1.2;
     vertical-align: middle;
   }
 
@@ -4948,8 +4985,12 @@ body.mobile-filters-sheet-open {
     letter-spacing: 0.03em;
     white-space: normal;
     line-height: 1.15;
-    padding-top: 7px;
-    padding-bottom: 9px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+  }
+
+  .tables-grid tbody tr:last-child td {
+    padding-bottom: 4px;
   }
 
   .tables-grid tbody tr:not(:last-child) td {
@@ -5193,17 +5234,15 @@ body.mobile-filters-sheet-open {
     background: var(--header-btn-bg);
   }
 
+  .nav-card-toolbar .btn-header-refresh:hover:not(:disabled),
+  .nav-card-toolbar .btn-header-refresh:active:not(:disabled),
   .nav-card-toolbar .btn-header-theme:hover:not([aria-pressed="true"]),
-  .nav-card-toolbar .btn-header-theme:active {
+  .nav-card-toolbar .btn-header-theme:active,
+  .nav-card-toolbar .btn-header-theme[aria-pressed="true"],
+  .nav-card-toolbar .btn-header-refresh[aria-pressed="true"] {
     background: var(--control-bg);
     color: var(--control-text);
     border-color: var(--brand-accent);
-  }
-
-  .nav-card-toolbar .btn-header-theme[aria-pressed="true"] {
-    background: var(--control-bg-active);
-    color: var(--control-text-active);
-    border-color: var(--control-bg-active);
   }
 
   .btn-header-menu-action:hover:not(:disabled),
