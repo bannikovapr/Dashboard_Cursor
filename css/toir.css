@@ -60,6 +60,8 @@
   --control-pad-y: var(--space-3);
   --control-pad-x: var(--space-4);
   --control-gap: var(--space-3);
+  --tap-feedback-bg: rgba(30, 215, 96, 0.12);
+  --tap-feedback-ring: rgba(30, 215, 96, 0.22);
   --dash-card-gap: var(--card-gap);
   --dash-section-gap: var(--section-gap);
   /* Две колонки отчётов в одной строке сетки — общая min-height */
@@ -658,6 +660,84 @@ html[data-theme="dark"] .chart-box .apexcharts-svg .apexcharts-plot-area {
   background: var(--control-bg-active);
   color: var(--control-text-active);
   border-color: var(--control-bg-active);
+}
+
+button,
+[role="button"],
+select,
+summary,
+.tab,
+.report-list-item,
+.report-export-summary,
+.report-export-menu-item,
+.ai-mobile-launcher {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+[role="button"],
+.tab,
+.btn-cta,
+.btn-report-toolbar,
+.report-list-item,
+.report-export-summary,
+.report-export-menu-item,
+.ai-mobile-launcher {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  user-select: none;
+}
+
+button::after,
+[role="button"]::after,
+.tab::after,
+.btn-cta::after,
+.btn-report-toolbar::after,
+.report-list-item::after,
+.report-export-summary::after,
+.report-export-menu-item::after,
+.ai-mobile-launcher::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: var(--tap-feedback-bg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+button:active:not(:disabled)::after,
+[role="button"]:active::after,
+.tab:active::after,
+.btn-cta:active:not(:disabled)::after,
+.btn-report-toolbar:active:not(:disabled)::after,
+.report-list-item:active::after,
+.report-export-summary:active::after,
+.report-export-menu-item:active::after,
+.ai-mobile-launcher:active::after {
+  opacity: 1;
+}
+
+button:focus:not(:focus-visible),
+[role="button"]:focus:not(:focus-visible),
+summary:focus:not(:focus-visible),
+.report-list-item:focus:not(:focus-visible),
+.report-export-summary:focus:not(:focus-visible),
+.report-export-menu-item:focus:not(:focus-visible) {
+  outline: none;
+}
+
+button:focus-visible,
+[role="button"]:focus-visible,
+summary:focus-visible,
+.report-list-item:focus-visible,
+.report-export-summary:focus-visible,
+.report-export-menu-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--tap-feedback-ring);
 }
 
 .table-wrap {
