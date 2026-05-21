@@ -29,6 +29,14 @@
   const PHONE_CHART_BREAKPOINT = 576;
   const MONTH_SHORT_LABELS = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
 
+  /** Единые отступы графиков дашборда (горизонтальные бары: подписи слева). */
+  const HBAR_GRID_PADDING = { left: 12, right: 10, top: 4, bottom: 10 };
+  /** Фиксированная ширина колонки подписей (px) — Apex иначе пересчитывает её при каждом render/resize. */
+  const HBAR_YAXIS_AREA_PX = 156;
+  const HBAR_YAXIS_LABEL_MAX_WIDTH = HBAR_YAXIS_AREA_PX - 12;
+  const HBAR_CATEGORY_LABEL_MAX_LEN = 28;
+  const COLUMN_GRID_PADDING = { left: 10, right: 16, top: 10, bottom: 28 };
+
   function dispose(sel) {
     const c = apexBySelector[sel];
     if (Array.isArray(c)) {
@@ -57,7 +65,7 @@
 
   function compactAxisNumber(value) {
     const num = Number(value);
-    if (!Number.isFinite(num)) return "";
+    if (!Number.isFinite(num)) return String(value ?? "").trim();
     const abs = Math.abs(num);
     if (abs >= 1e9) return `${Number(num / 1e9).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} млрд`;
     if (abs >= 1e6) return `${Number(num / 1e6).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} млн`;
@@ -103,13 +111,122 @@
     );
   }
 
+  function hbarCategoryYAxis(axisColor, fontSize = "12px") {
+    return {
+      axisBorder: { show: false },
+      axisTicks: { show: false },
+      labels: {
+        formatter: (v) => String(v ?? "").trim(),
+        maxWidth: HBAR_YAXIS_LABEL_MAX_WIDTH,
+        trim: true,
+        style: { colors: axisColor, fontSize },
+      },
+    };
+  }
+
+  function hbarNumericXAxisLabels(axisColor, fontSize = "11px") {
+    return {
+      formatter: compactAxisNumber,
+      style: { colors: axisColor, fontSize },
+    };
+  }
+
+  function isHorizontalBarChart(chart) {
+    return !!(chart && chart.w && chart.w.config && chart.w.config.plotOptions?.bar?.horizontal);
+  }
+
+  function lockHorizontalBarYAxisWidth(chart) {
+    if (!isHorizontalBarChart(chart) || !chart.w?.globals) return false;
+    const prev = chart.w.globals.yAxisScaleWidth;
+    chart.w.globals.yAxisScaleWidth = HBAR_YAXIS_AREA_PX;
+    return prev !== HBAR_YAXIS_AREA_PX;
+  }
+
+  /** Один раз после mount: без updated/resized, иначе updateOptions → updated → цикл и лаги. */
+  function stabilizeHorizontalBarChart(chart) {
+    if (!chart || chart._hbarLayoutStable) return;
+    if (!lockHorizontalBarYAxisWidth(chart)) {
+      chart._hbarLayoutStable = true;
+      return;
+    }
+    if (chart._hbarStabilizing) return;
+    chart._hbarStabilizing = true;
+    requestAnimationFrame(() => {
+      chart._hbarStabilizing = false;
+      if (!isHorizontalBarChart(chart)) return;
+      lockHorizontalBarYAxisWidth(chart);
+      try {
+        chart.updateOptions({}, false, false, false);
+      } catch (_) {}
+      chart._hbarLayoutStable = true;
+    });
+  }
+
+  function horizontalBarChartEvents() {
+    return {
+      mounted: (ctx) => stabilizeHorizontalBarChart(ctx),
+      resized: (ctx) => lockHorizontalBarYAxisWidth(ctx),
+    };
+  }
+
+  function renderHorizontalBarChart(el, opts, selector) {
+    const chart = new ApexCharts(el, opts);
+    apexBySelector[selector] = chart;
+    const done = chart.render();
+    if (done && typeof done.then === "function") {
+      return done.then(() => stabilizeHorizontalBarChart(chart));
+    }
+    stabilizeHorizontalBarChart(chart);
+    return done;
+  }
+
+  /** Горизонтальные бары: слева категории (yaxis), снизу числа (xaxis). Без responsive — отступы не прыгают при resize/перезагрузке. */
+  function horizontalBarLayout(height) {
+    const b = baseOpts();
+    const axisColor = chartAxisColor();
+    const gridBlock = { padding: { ...HBAR_GRID_PADDING } };
+    return {
+      ...b,
+      grid: { ...(b.grid || {}), ...gridBlock },
+      yaxis: hbarCategoryYAxis(axisColor),
+      xaxis: { labels: hbarNumericXAxisLabels(axisColor) },
+      chart: {
+        ...b.chart,
+        type: "bar",
+        height,
+        width: "100%",
+        redrawOnParentResize: true,
+        redrawOnWindowResize: true,
+        animations: {
+          enabled: true,
+          dynamicAnimation: { enabled: false },
+        },
+        events: horizontalBarChartEvents(),
+      },
+      plotOptions: {
+        bar: {
+          horizontal: true,
+          barHeight: "68%",
+          borderRadius: 4,
+        },
+      },
+      legend: {
+        ...(b.legend || {}),
+        position: "top",
+      },
+      responsive: [],
+    };
+  }
+
   function chartLayout(height, chartType) {
     const b = baseOpts();
     const tabletHeight = Math.max(220, Math.round(height * 0.9));
     const phoneHeight = Math.max(238, Math.round(height * 0.88));
     const axisColor = chartAxisColor();
+    const colGrid = { padding: { ...COLUMN_GRID_PADDING } };
     return {
       ...b,
+      grid: { ...(b.grid || {}), ...colGrid },
       chart: {
         ...b.chart,
         type: chartType,
@@ -129,12 +246,6 @@
             chart: { height: tabletHeight },
             legend: { position: "bottom", fontSize: "10px" },
             xaxis: { labels: { rotate: -20, hideOverlappingLabels: true, trim: true } },
-            yaxis: {
-              labels: {
-                maxWidth: 180,
-                style: { colors: axisColor, fontSize: "11px" },
-              },
-            },
           },
         },
         {
@@ -148,15 +259,6 @@
               itemMargin: { horizontal: 6, vertical: 2 },
             },
             xaxis: mobileColumnXAxis(axisColor, -38, null, true),
-            yaxis: {
-              title: { text: "" },
-              labels: {
-                formatter: compactAxisNumber,
-                maxWidth: 52,
-                style: { fontSize: "10px", colors: axisColor },
-              },
-            },
-            grid: { padding: { left: 0, right: 0, top: 0, bottom: 8 } },
           },
         },
       ],
@@ -176,7 +278,7 @@
           yaxis: [
             {
               title: { text: "" },
-              labels: { formatter: compactAxisNumber, maxWidth: 64, style: { colors: axisColor, fontSize: "10px" } },
+              labels: { formatter: compactAxisNumber, maxWidth: 70, style: { colors: axisColor, fontSize: "10px" } },
             },
             {
               opposite: true,
@@ -184,7 +286,7 @@
               labels: { formatter: compactAxisNumber, maxWidth: 52, style: { colors: axisColor, fontSize: "10px" } },
             },
           ],
-          grid: { padding: { left: 0, right: 0, top: 0, bottom: 8 } },
+          grid: { padding: { ...COLUMN_GRID_PADDING, top: 0, bottom: 8 } },
         },
       },
       {
@@ -201,7 +303,7 @@
           yaxis: [
             {
               title: { text: "" },
-              labels: { formatter: compactAxisNumber, maxWidth: 46, style: { colors: axisColor, fontSize: "10px" } },
+              labels: { formatter: compactAxisNumber, maxWidth: 58, style: { colors: axisColor, fontSize: "10px" } },
             },
             {
               opposite: true,
@@ -209,7 +311,7 @@
               labels: { formatter: compactAxisNumber, maxWidth: 40, style: { colors: axisColor, fontSize: "10px" } },
             },
           ],
-          grid: { padding: { left: -2, right: -2, top: 0, bottom: 6 } },
+          grid: { padding: { ...COLUMN_GRID_PADDING, top: 0, bottom: 6 } },
           plotOptions: { bar: { horizontal: false, columnWidth: "68%", borderRadius: 4 } },
         },
       },
@@ -217,18 +319,19 @@
   }
 
   function resizeAll() {
-    requestAnimationFrame(() => {
+    const run = () => {
       Object.values(apexBySelector).forEach((entry) => {
         const charts = Array.isArray(entry) ? entry : [entry];
         charts.forEach((chart) => {
-          if (chart && typeof chart.resize === "function") {
-            try {
-              chart.resize();
-            } catch (_) {}
-          }
+          if (!chart || typeof chart.resize !== "function") return;
+          try {
+            lockHorizontalBarYAxisWidth(chart);
+            chart.resize();
+          } catch (_) {}
         });
       });
-    });
+    };
+    requestAnimationFrame(() => requestAnimationFrame(run));
   }
 
   function renderStructureByClass(categories, values, targetSel = "#chartStructure", height = 300) {
@@ -241,22 +344,21 @@
     }
     dispose(targetSel);
     el.innerHTML = "";
+    const axisColor = chartAxisColor();
+    const cat = categories.map((c) => shortenLabel(c, HBAR_CATEGORY_LABEL_MAX_LEN));
     const opts = {
-      ...chartLayout(height, "bar"),
-      grid: { padding: { left: 8, right: 0 } },
+      ...horizontalBarLayout(height),
       plotOptions: { bar: { horizontal: true, barHeight: "65%", borderRadius: 4 } },
       series: [{ name: "Доля, %", data: values }],
       colors: [chartBarColor()],
       xaxis: {
-        categories,
+        categories: cat,
         max: 100,
         tickAmount: 5,
-        labels: { formatter: (v) => `${v}%` },
+        labels: { formatter: (v) => `${v}%`, style: { colors: axisColor, fontSize: "11px" } },
       },
-      yaxis: { labels: { maxWidth: 200, style: { fontSize: "13px" } } },
     };
-    apexBySelector[targetSel] = new ApexCharts(el, opts);
-    apexBySelector[targetSel].render();
+    renderHorizontalBarChart(el, opts, targetSel);
   }
 
   function renderCostsByMonth(labels, seriesMln, targetSel = "#chartCosts", height = 320) {
@@ -290,7 +392,6 @@
         title: { text: "Млн ₽" },
         labels: { formatter: (v) => v.toLocaleString("ru-RU", { maximumFractionDigits: 2 }) },
       },
-      grid: { padding: { left: 0, right: 2, top: 0, bottom: 8 } },
       responsive: withPhoneXAxis(layout.responsive, mobileColumnXAxis(axisColor, -44, compactMonthLabel, false)),
       tooltip: {
         y: {
@@ -313,10 +414,9 @@
     }
     dispose(targetSel);
     el.innerHTML = "";
-    const cat = targetSel === "#chartCausesRel" ? categories.map((c) => shortenLabel(c, 36)) : categories;
+    const cat = categories.map((c) => shortenLabel(c, HBAR_CATEGORY_LABEL_MAX_LEN));
     const opts = {
-      ...chartLayout(height, "bar"),
-      grid: { padding: { left: 24, right: 0 } },
+      ...horizontalBarLayout(height),
       plotOptions: {
         bar: {
           horizontal: true,
@@ -327,12 +427,10 @@
       series: [{ name: "Кол-во", data: values }],
       colors: [chartBarColor()],
       legend: { show: false },
-      xaxis: targetSel === "#chartCausesRel" ? { categories: cat, labels: { style: { fontSize: "11px" } } } : { categories: cat },
-      yaxis: { labels: { maxWidth: targetSel === "#chartCausesRel" ? 200 : 220, style: { fontSize: "13px" } } },
+      xaxis: { categories: cat },
       tooltip: { y: { formatter: (val) => `${val} отказов` } },
     };
-    apexBySelector[targetSel] = new ApexCharts(el, opts);
-    apexBySelector[targetSel].render();
+    renderHorizontalBarChart(el, opts, targetSel);
   }
 
   /** Горизонтальный бар: затраты по объектам, млн ₽ */
@@ -346,15 +444,13 @@
     }
     dispose(targetSel);
     el.innerHTML = "";
-    const cat = names.map((n) => shortenLabel(n, 40));
+    const cat = names.map((n) => shortenLabel(n, HBAR_CATEGORY_LABEL_MAX_LEN));
     const opts = {
-      ...chartLayout(height, "bar"),
-      grid: { padding: { left: 24, right: 0 } },
+      ...horizontalBarLayout(height),
       plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3 } },
       series: [{ name: "млн ₽", data: costsMln }],
       colors: [chartBarColor()],
       xaxis: { categories: cat },
-      yaxis: { labels: { maxWidth: 200, style: { fontSize: "13px" } } },
       dataLabels: {
         enabled: true,
         formatter: (v) => `${Number(v).toFixed(2)}`,
@@ -367,8 +463,7 @@
         },
       },
     };
-    apexBySelector[targetSel] = new ApexCharts(el, opts);
-    apexBySelector[targetSel].render();
+    renderHorizontalBarChart(el, opts, targetSel);
   }
 
   function renderClassCostDonut(labels, costsRub, targetSel = "#chartClassCostDonut", height = 320) {
@@ -454,20 +549,17 @@
     }
     dispose(targetSel);
     el.innerHTML = "";
-    const cat = names.map((n) => shortenLabel(n, 40));
+    const cat = names.map((n) => shortenLabel(n, HBAR_CATEGORY_LABEL_MAX_LEN));
     const opts = {
-      ...chartLayout(height, "bar"),
-      grid: { padding: { left: 24, right: 0 } },
+      ...horizontalBarLayout(height),
       plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3 } },
       series: [{ name: "Часы", data: hours }],
       colors: [chartBarColor()],
       legend: { show: false },
       xaxis: { categories: cat },
-      yaxis: { labels: { maxWidth: 200, style: { fontSize: "13px" } } },
       tooltip: { y: { formatter: (v) => `${Math.round(v)} ч` } },
     };
-    apexBySelector[targetSel] = new ApexCharts(el, opts);
-    apexBySelector[targetSel].render();
+    renderHorizontalBarChart(el, opts, targetSel);
   }
 
   function renderTopDefects(names, counts, targetSel = "#chartTopDefects", height = 320) {
@@ -480,20 +572,17 @@
     }
     dispose(targetSel);
     el.innerHTML = "";
-    const cat = names.map((n) => shortenLabel(n, 40));
+    const cat = names.map((n) => shortenLabel(n, HBAR_CATEGORY_LABEL_MAX_LEN));
     const opts = {
-      ...chartLayout(height, "bar"),
-      grid: { padding: { left: 24, right: 0 } },
+      ...horizontalBarLayout(height),
       plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3 } },
       series: [{ name: "Отказов", data: counts }],
       colors: [chartBarColor()],
       legend: { show: false },
       xaxis: { categories: cat },
-      yaxis: { labels: { maxWidth: 200, style: { fontSize: "13px" } } },
       tooltip: { y: { formatter: (v) => `${v} шт.` } },
     };
-    apexBySelector[targetSel] = new ApexCharts(el, opts);
-    apexBySelector[targetSel].render();
+    renderHorizontalBarChart(el, opts, targetSel);
   }
 
   function renderClassQtyColumn(classes, qtys, targetSel = "#chartClassQty", height = 300) {
@@ -539,7 +628,6 @@
         title: { text: "Млн ₽" },
         labels: { formatter: (v) => Number(v).toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 }) },
       },
-      grid: { padding: { left: 6, right: 0 } },
       tooltip: {
         y: {
           formatter: (val) =>
@@ -604,19 +692,16 @@
     }
     dispose(targetSel);
     el.innerHTML = "";
-    const cat = names.map((n) => shortenLabel(n, 38));
+    const cat = names.map((n) => shortenLabel(n, HBAR_CATEGORY_LABEL_MAX_LEN));
     const opts = {
-      ...chartLayout(height, "bar"),
-      grid: { padding: { left: 24, right: 0 } },
+      ...horizontalBarLayout(height),
       plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3 } },
       series: [{ name: "СННО, ч", data: hours }],
       colors: [chartBarColor()],
       xaxis: { categories: cat },
-      yaxis: { labels: { maxWidth: 220, style: { fontSize: "13px" } } },
       tooltip: { y: { formatter: (v) => `${Math.round(v).toLocaleString("ru-RU")} ч` } },
     };
-    apexBySelector[targetSel] = new ApexCharts(el, opts);
-    apexBySelector[targetSel].render();
+    renderHorizontalBarChart(el, opts, targetSel);
   }
 
   function renderMttrTop(names, hours, targetSel = "#chartMttrTop", height = 300) {
@@ -629,19 +714,16 @@
     }
     dispose(targetSel);
     el.innerHTML = "";
-    const cat = names.map((n) => shortenLabel(n, 38));
+    const cat = names.map((n) => shortenLabel(n, HBAR_CATEGORY_LABEL_MAX_LEN));
     const opts = {
-      ...chartLayout(height, "bar"),
-      grid: { padding: { left: 24, right: 0 } },
+      ...horizontalBarLayout(height),
       plotOptions: { bar: { horizontal: true, barHeight: "70%", borderRadius: 3 } },
       series: [{ name: "СВР, ч", data: hours }],
       colors: [chartBarColor()],
       xaxis: { categories: cat },
-      yaxis: { labels: { maxWidth: 220, style: { fontSize: "13px" } } },
       tooltip: { y: { formatter: (v) => `${Math.round(v).toLocaleString("ru-RU")} ч` } },
     };
-    apexBySelector[targetSel] = new ApexCharts(el, opts);
-    apexBySelector[targetSel].render();
+    renderHorizontalBarChart(el, opts, targetSel);
   }
 
   function renderMaterialLaborStacked(labels, materialRub, laborHours, targetSel = "#chartMaterialLabor", height = 300) {
@@ -701,7 +783,6 @@
         itemMargin: { horizontal: 8, vertical: 2 },
       },
       dataLabels: { enabled: false },
-      grid: { padding: { left: 2, right: 2, top: 0, bottom: 8 } },
       responsive: dualAxisMobileResponsive(height),
       tooltip: {
         shared: true,
@@ -772,13 +853,15 @@
     dispose(targetSel);
 
     const type = spec.chartType || "bar";
-    const categories = (spec.categories || []).map((c) => shortenLabel(c, 30));
     const palette = categoricalPalette();
     const series = spec.series || [];
     const axisTint = chartAxisColor();
-    const isHorizontalBar = type === "bar" && categories.length >= 4;
+    const isHorizontalBar = type === "bar" && (spec.categories || []).length >= 4;
+    const categories = (spec.categories || []).map((c) =>
+      shortenLabel(c, isHorizontalBar ? HBAR_CATEGORY_LABEL_MAX_LEN : 30)
+    );
     const layoutType = isHorizontalBar ? "bar" : type;
-    const layoutOnce = chartLayout(height, layoutType);
+    const layoutOnce = isHorizontalBar ? horizontalBarLayout(height) : chartLayout(height, layoutType);
 
     const isPie = type === "pie" || type === "donut";
 
@@ -814,21 +897,18 @@
       xaxis: {
         ...layoutOnce.xaxis,
         categories,
-        labels: {
-          ...((layoutOnce.xaxis && layoutOnce.xaxis.labels) || {}),
-          style: { colors: axisTint, fontSize: "10px" },
-          hideOverlappingLabels: true,
-          rotate: isHorizontalBar ? 0 : -35,
-          maxHeight: 80,
-        },
+        labels: isHorizontalBar
+          ? hbarNumericXAxisLabels(axisTint, "10px")
+          : {
+              ...((layoutOnce.xaxis && layoutOnce.xaxis.labels) || {}),
+              style: { colors: axisTint, fontSize: "10px" },
+              hideOverlappingLabels: true,
+              rotate: -35,
+              maxHeight: 80,
+            },
       },
       yaxis: isHorizontalBar
-        ? {
-            labels: {
-              maxWidth: 220,
-              style: { colors: axisTint, fontSize: "12px" },
-            },
-          }
+        ? hbarCategoryYAxis(axisTint)
         : {
             labels: {
               style: { colors: axisTint, fontSize: "11px" },
@@ -859,8 +939,7 @@
       fill: type === "area" ? { type: "gradient", gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05 } } : {},
     };
 
-    apexBySelector[targetSel] = new ApexCharts(el, opts);
-    apexBySelector[targetSel].render();
+    renderHorizontalBarChart(el, opts, targetSel);
   }
 
   global.ToirCharts = {

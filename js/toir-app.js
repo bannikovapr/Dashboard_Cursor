@@ -138,25 +138,43 @@
     return Math.max(min, Math.min(max, value));
   }
 
+  const chartHeightCache = Object.create(null);
+  let chartHeightLayoutMode = null;
+
+  function chartHeightLayoutModeKey() {
+    return window.matchMedia("(max-width: 899px)").matches ? "mobile" : "desktop";
+  }
+
+  function clearChartHeightCache() {
+    for (const key of Object.keys(chartHeightCache)) delete chartHeightCache[key];
+    chartHeightLayoutMode = null;
+  }
+
+  /** Высота только из карточки (.chart-box), с кэшем — при догрузке данных размеры не прыгают. */
   function getChartHeight(targetSel, options = {}) {
-    const {
-      fallback = 260,
-      min = 200,
-      max = 460,
-      ratio = 0.52,
-      items = 0,
-      perItem = 0,
-      basePad = 100,
-      useBoxHeight = false,
-    } = options;
-    const target = targetSel ? document.querySelector(targetSel) : null;
-    const width = target ? Math.round(target.getBoundingClientRect().width || target.clientWidth || 0) : 0;
-    const boxHeight = target ? Math.round(target.getBoundingClientRect().height || target.clientHeight || 0) : 0;
-    const fromWidth = width > 0 ? Math.round(width * ratio) : fallback;
-    const fromItems = items > 0 && perItem > 0 ? Math.round(items * perItem + basePad) : 0;
-    const fromBox = useBoxHeight && boxHeight > 0 ? boxHeight : 0;
-    const next = Math.max(fallback, fromWidth, fromItems, fromBox);
-    return Math.round(clampNumber(next, min, max));
+    const { fallback = 260, min = 200, max = 460, force = false } = options;
+    const layoutMode = chartHeightLayoutModeKey();
+    if (chartHeightLayoutMode !== layoutMode) {
+      clearChartHeightCache();
+      chartHeightLayoutMode = layoutMode;
+    }
+    if (!force && targetSel && chartHeightCache[targetSel] > 0) {
+      return chartHeightCache[targetSel];
+    }
+
+    const el = targetSel ? document.querySelector(targetSel) : null;
+    const box = el?.closest?.(".chart-box") || el;
+    let measured = 0;
+    if (box) {
+      measured = Math.round(box.getBoundingClientRect().height || 0);
+      if (measured < 48) {
+        const minCss = parseFloat(getComputedStyle(box).minHeight);
+        if (Number.isFinite(minCss) && minCss > 0) measured = Math.round(minCss);
+      }
+    }
+    const height = Math.round(clampNumber(measured > 0 ? measured : fallback, min, max));
+    if (targetSel) chartHeightCache[targetSel] = height;
+    return height;
   }
 
   function getSeriesPointCount(chartSpec) {
@@ -729,6 +747,15 @@
         ? preferredValue
         : "__all__";
     selectEl.value = pick;
+    syncFilterSelectTitle(selectEl);
+  }
+
+  function syncFilterSelectTitle(selectEl) {
+    if (!selectEl) return;
+    const opt = selectEl.options[selectEl.selectedIndex];
+    const label = opt ? String(opt.textContent || "").trim() : "";
+    if (label) selectEl.title = label;
+    else selectEl.removeAttribute("title");
   }
 
   function updateHeaderChips(periodValue, classValue, rows) {
@@ -1109,6 +1136,174 @@
 
   const MOBILE_LAYOUT_MQ = window.matchMedia("(max-width: 899px)");
 
+  function wireFilterPickers(selectEls) {
+    const pickers = [];
+    let docClickBound = false;
+
+    function closePicker(picker, restoreFocus) {
+      if (!picker || !picker.wrap.classList.contains("is-open")) return;
+      picker.wrap.classList.remove("is-open");
+      picker.trigger.setAttribute("aria-expanded", "false");
+      picker.menu.hidden = true;
+      if (restoreFocus !== false) picker.trigger.focus();
+    }
+
+    function closeAllPickers() {
+      for (const p of pickers) closePicker(p, false);
+    }
+
+    function syncPicker(picker) {
+      const { native, menu, valueEl } = picker;
+      menu.replaceChildren();
+      const selected = native.value;
+      for (const opt of native.options) {
+        const li = document.createElement("li");
+        li.className = "filter-picker__option";
+        li.setAttribute("role", "option");
+        li.dataset.value = opt.value;
+        li.textContent = opt.textContent;
+        const isSel = opt.value === selected;
+        li.setAttribute("aria-selected", isSel ? "true" : "false");
+        li.classList.toggle("is-selected", isSel);
+        li.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (native.value !== opt.value) {
+            native.value = opt.value;
+            native.dispatchEvent(new Event("change", { bubbles: true }));
+          } else {
+            syncPicker(picker);
+          }
+          closePicker(picker);
+        });
+        menu.appendChild(li);
+      }
+      const cur = native.options[native.selectedIndex];
+      valueEl.textContent = cur ? cur.textContent : "";
+      syncFilterSelectTitle(native);
+    }
+
+    function openPicker(picker) {
+      for (const p of pickers) {
+        if (p !== picker) closePicker(p, false);
+      }
+      syncPicker(picker);
+      picker.menu.hidden = false;
+      picker.wrap.classList.add("is-open");
+      picker.trigger.setAttribute("aria-expanded", "true");
+    }
+
+    function bindLabelFor(picker) {
+      const labelId = picker.native.id === "panelPeriod" ? "panelPeriodLabel" : "panelClassLabel";
+      const label = document.getElementById(labelId);
+      if (!label) return;
+      label.htmlFor = MOBILE_LAYOUT_MQ.matches ? picker.trigger.id : picker.native.id;
+    }
+
+    function mountPicker(native) {
+      if (!native || native.dataset.filterPickerMounted === "1") return null;
+      const field = native.closest(".filter-field");
+      if (!field) return null;
+
+      const wrap = document.createElement("div");
+      wrap.className = "filter-picker";
+
+      const trigger = document.createElement("button");
+      trigger.type = "button";
+      trigger.className = "filter-picker__trigger";
+      trigger.id = `${native.id}Picker`;
+      trigger.setAttribute("aria-haspopup", "listbox");
+      const labelId = native.id === "panelPeriod" ? "panelPeriodLabel" : "panelClassLabel";
+      if (document.getElementById(labelId)) trigger.setAttribute("aria-labelledby", labelId);
+
+      const valueEl = document.createElement("span");
+      valueEl.className = "filter-picker__value";
+      trigger.appendChild(valueEl);
+
+      const menu = document.createElement("ul");
+      menu.className = "filter-picker__menu";
+      menu.setAttribute("role", "listbox");
+      menu.id = `${native.id}Listbox`;
+      menu.hidden = true;
+      trigger.setAttribute("aria-controls", menu.id);
+
+      native.classList.add("filter-picker__native");
+      field.insertBefore(wrap, native);
+      wrap.append(trigger, menu, native);
+
+      const picker = { wrap, native, trigger, menu, valueEl };
+      pickers.push(picker);
+      native.dataset.filterPickerMounted = "1";
+
+      trigger.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!MOBILE_LAYOUT_MQ.matches) return;
+        if (picker.wrap.classList.contains("is-open")) closePicker(picker);
+        else openPicker(picker);
+      });
+
+      trigger.addEventListener("keydown", (e) => {
+        if (!MOBILE_LAYOUT_MQ.matches) return;
+        if (e.key === "Escape") {
+          closePicker(picker);
+          return;
+        }
+        if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openPicker(picker);
+        }
+      });
+
+      native.addEventListener("change", () => syncPicker(picker));
+      const mo = new MutationObserver(() => syncPicker(picker));
+      mo.observe(native, { childList: true, subtree: true, attributes: true, attributeFilter: ["selected"] });
+
+      syncPicker(picker);
+      bindLabelFor(picker);
+      return picker;
+    }
+
+    for (const sel of selectEls) mountPicker(sel);
+
+    if (!docClickBound) {
+      docClickBound = true;
+      document.addEventListener("click", (e) => {
+        if (e.target.closest(".filter-picker")) return;
+        closeAllPickers();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeAllPickers();
+      });
+    }
+
+    const onMq = () => {
+      closeAllPickers();
+      for (const p of pickers) bindLabelFor(p);
+    };
+    if (typeof MOBILE_LAYOUT_MQ.addEventListener === "function") {
+      MOBILE_LAYOUT_MQ.addEventListener("change", onMq);
+    } else if (typeof MOBILE_LAYOUT_MQ.addListener === "function") {
+      MOBILE_LAYOUT_MQ.addListener(onMq);
+    }
+
+    return { closeAllPickers, syncAll: () => pickers.forEach(syncPicker) };
+  }
+
+  function applyNavToolbarPlacement() {
+    const toolbar = document.getElementById("navCardToolbar");
+    const tabsBar = document.getElementById("filtersTabsBar");
+    const host = document.getElementById("filtersRowHost");
+    const mobileBar = document.getElementById("mobileFilterBar");
+    if (!toolbar || !host) return;
+    if (MOBILE_LAYOUT_MQ.matches) {
+      if (mobileBar) host.insertBefore(toolbar, mobileBar);
+      else if (toolbar.parentElement !== host) host.prepend(toolbar);
+      return;
+    }
+    if (tabsBar && toolbar.parentElement !== tabsBar) {
+      tabsBar.appendChild(toolbar);
+    }
+  }
+
   function wireMobileFiltersSheet(handlers) {
     const filtersRow = document.getElementById("filtersRow");
     const slot = document.getElementById("filtersRowSlot");
@@ -1130,6 +1325,7 @@
         document.body.classList.remove("mobile-filters-mode", "mobile-filters-sheet-open");
         if (slot && filtersRow.parentElement !== slot) slot.appendChild(filtersRow);
       }
+      applyNavToolbarPlacement();
     }
 
     function openSheet() {
@@ -1151,6 +1347,7 @@
 
     function closeSheet(restoreFocus) {
       if (sheet.hidden) return;
+      if (typeof handlers?.closeFilterPickers === "function") handlers.closeFilterPickers();
       sheet.classList.remove("is-open");
       sheet.classList.add("is-closing");
       sheet.setAttribute("aria-hidden", "true");
@@ -1191,6 +1388,7 @@
     });
 
     const onMqChange = () => {
+      clearChartHeightCache();
       applyPlacement();
       if (typeof handlers?.onLayoutChange === "function") handlers.onLayoutChange();
     };
@@ -1233,8 +1431,12 @@
     const layoutMain = document.querySelector(".layout-main");
     let resizeTimer = null;
 
+    const filterPickers = wireFilterPickers([periodSel, classSel].filter(Boolean));
+
     wireMobileFiltersSheet({
+      closeFilterPickers: () => filterPickers?.closeAllPickers?.(),
       onLayoutChange: () => {
+        filterPickers?.syncAll?.();
         queueChartsResize();
         syncMobileAiDock();
       },
@@ -1243,6 +1445,7 @@
     function queueChartsResize() {
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
+        clearChartHeightCache();
         Charts.resizeAll();
         clearLegacyAiSidebarInlineStyles();
         reflowDiagnosticsIfNeeded();
@@ -1321,6 +1524,8 @@
     }
 
     const drain = () => {
+      syncFilterSelectTitle(periodSel);
+      syncFilterSelectTitle(classSel);
       const monthSet = monthSetFromPeriod(periodSel?.value || "all", allMonths);
       const cls = classSel?.value || "__all__";
       const rows = buildEquipmentRows(liveData, monthSet, cls);
@@ -1588,10 +1793,10 @@
       document.getElementById("footerSource").textContent =
         `Источник: ${liveData.meta?.source || "—"} → data/toir.json · ${liveData.meta?.period || ""}`;
 
-      setTimeout(() => {
+      requestAnimationFrame(() => {
         Charts.resizeAll();
         clearLegacyAiSidebarInlineStyles();
-      }, 120);
+      });
 
       if (window.ToirReports && typeof window.ToirReports.syncSliceFromDashboard === "function") {
         window.ToirReports.syncSliceFromDashboard();
@@ -1664,7 +1869,7 @@
             throw new Error("Файл data/toir.json имеет неожиданный формат.");
           }
           applyFreshDashboardData(next);
-          setStatus("Готово.", false);
+          setStatus("", false);
         } catch (err) {
           const msg = String((err && err.message) || err || "Ошибка");
           setStatus(msg, true);
@@ -2620,6 +2825,7 @@
       panelTop.appendChild(btnHide);
     }
 
+    const dockBar = document.getElementById("mobileDockBar");
     let btnLauncher = document.getElementById("btnAiMobileLauncher");
     if (!btnLauncher) {
       btnLauncher = document.createElement("button");
@@ -2628,8 +2834,9 @@
       btnLauncher.className = "ai-mobile-launcher";
       btnLauncher.setAttribute("aria-controls", panel.id);
       btnLauncher.textContent = "Ассистент";
-      btnLauncher.hidden = true;
-      document.body.appendChild(btnLauncher);
+    }
+    if (dockBar && btnLauncher.parentElement !== dockBar) {
+      dockBar.appendChild(btnLauncher);
     }
 
     function hasContent() {
@@ -2642,11 +2849,18 @@
     function updateDockOffset() {
       if (!document.body.classList.contains("ai-mobile-dock-active")) {
         document.documentElement.style.removeProperty("--ai-mobile-dock-offset");
+        if (dockBar) dockBar.hidden = true;
         return;
       }
+      if (dockBar) dockBar.hidden = false;
       requestAnimationFrame(() => {
         const hidden = document.body.classList.contains("ai-mobile-dock-hidden");
-        const measured = hidden && btnLauncher && !btnLauncher.hidden ? btnLauncher : panel;
+        const measured =
+          hidden && dockBar
+            ? dockBar
+            : hidden && btnLauncher && !btnLauncher.hidden
+              ? btnLauncher
+              : panel;
         const h = measured.getBoundingClientRect().height;
         document.documentElement.style.setProperty("--ai-mobile-dock-offset", `${Math.ceil(h) + 12}px`);
       });
@@ -2670,7 +2884,7 @@
         btnHide.setAttribute("aria-expanded", dockHidden ? "false" : "true");
       }
       if (btnLauncher) {
-        btnLauncher.hidden = !dockable || !dockHidden;
+        btnLauncher.hidden = !dockable;
         btnLauncher.setAttribute("aria-expanded", dockHidden ? "false" : "true");
       }
 

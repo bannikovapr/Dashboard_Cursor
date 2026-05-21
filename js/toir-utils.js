@@ -75,7 +75,7 @@
       grid: {
         borderColor: grid,
         strokeDashArray: 4,
-        padding: { left: 4, right: 32, top: 10, bottom: 28 },
+        padding: { left: 10, right: 16, top: 10, bottom: 28 },
       },
       dataLabels: { enabled: false },
       legend: { position: "top", horizontalAlign: "right", fontSize: "11px" },

@@ -77,15 +77,6 @@
                 </div>
               </div>
             </div>
-            <div class="header-side">
-              <div class="header-side-actions">
-                <button type="button" id="btnRefreshDashboardData" class="btn-header-refresh" title="Пересобрать toir.json на сервере (если включено) и обновить графики">
-                  Загрузить новые данные
-                </button>
-                <button type="button" id="btnThemeToggle" class="btn-header-theme" aria-pressed="false" title="Включить тёмную тему" aria-label="Включить тёмную тему">☾</button>
-              </div>
-              <span class="header-refresh-status" id="dataRefreshStatus" aria-live="polite"></span>
-            </div>
           </div>
           <div class="header-chips" aria-label="Контекст текущего среза">
             <span class="header-chip">Период: <b id="chipPeriod">12 мес.</b></span>
@@ -107,7 +98,7 @@
             <div id="filtersRowSlot" class="filters-row-slot">
             <div class="filters-row" id="filtersRow">
               <div class="filter-field">
-                <label for="panelPeriod">Период</label>
+                <label id="panelPeriodLabel" for="panelPeriod">Период</label>
                 <select id="panelPeriod" aria-label="Период">
                   <option value="all">Последние 12 месяцев</option>
                   <option value="h1">1-е полугодие 2025</option>
@@ -115,16 +106,41 @@
                 </select>
               </div>
               <div class="filter-field">
-                <label for="panelClass">Класс оборудования</label>
+                <label id="panelClassLabel" for="panelClass">Класс оборудования</label>
                 <select id="panelClass" aria-label="Класс оборудования"></select>
               </div>
-              <div class="tabs filters-tabs" role="tablist" aria-label="Разделы дашборда">
-                <button type="button" class="tab" data-tab="summary" aria-selected="true">Сводка</button>
-                <button type="button" class="tab" data-tab="costs">Затраты</button>
-                <button type="button" class="tab" data-tab="reliability">Надёжность</button>
-                <button type="button" class="tab" data-tab="equipment">Оборудование</button>
-                <button type="button" class="tab" data-tab="diagnostics">Диагностики</button>
-                <button type="button" class="tab" data-tab="reports">Отчёт ТОиР</button>
+              <div class="filters-tabs-bar" id="filtersTabsBar">
+                <div class="tabs filters-tabs" role="tablist" aria-label="Разделы дашборда">
+                  <button type="button" class="tab" data-tab="summary" aria-selected="true">Сводка</button>
+                  <button type="button" class="tab" data-tab="costs">Затраты</button>
+                  <button type="button" class="tab" data-tab="reliability">Надёжность</button>
+                  <button type="button" class="tab" data-tab="equipment">Оборудование</button>
+                  <button type="button" class="tab" data-tab="diagnostics">Диагностики</button>
+                  <button type="button" class="tab" data-tab="reports">Отчёт ТОиР</button>
+                </div>
+                <div class="nav-card-toolbar" id="navCardToolbar">
+                  <div class="nav-card-actions header-side-actions">
+                    <button
+                      type="button"
+                      id="btnRefreshDashboardData"
+                      class="btn-header-refresh"
+                      title="Пересобрать toir.json на сервере (если включено) и обновить графики"
+                    >
+                      Загрузить новые данные
+                    </button>
+                    <button
+                      type="button"
+                      id="btnThemeToggle"
+                      class="btn-header-theme"
+                      aria-pressed="false"
+                      title="Включить тёмную тему"
+                      aria-label="Включить тёмную тему"
+                    >
+                      ☾
+                    </button>
+                  </div>
+                  <span class="header-refresh-status" id="dataRefreshStatus" aria-live="polite"></span>
+                </div>
               </div>
             </div>
             </div>
@@ -417,6 +433,8 @@
           <button type="button" class="btn-cta" id="aiSend">Спросить</button>
         </div>
       </aside>
+
+      <div class="mobile-dock-bar" id="mobileDockBar" hidden></div>
 
       <div
         id="mobileFiltersSheet"
