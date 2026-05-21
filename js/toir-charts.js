@@ -29,13 +29,12 @@
   const PHONE_CHART_BREAKPOINT = 576;
   const MONTH_SHORT_LABELS = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
 
-  /** Единые отступы графиков дашборда (горизонтальные бары: подписи слева). */
-  const HBAR_GRID_PADDING = { left: 12, right: 10, top: 4, bottom: 10 };
+  /** Единые отступы plot area для всех графиков дашборда. */
+  const DASHBOARD_CHART_GRID_PADDING = Object.freeze({ left: 12, right: 12, top: 10, bottom: 24 });
   /** Фиксированная ширина колонки подписей (px) — Apex иначе пересчитывает её при каждом render/resize. */
   const HBAR_YAXIS_AREA_PX = 156;
   const HBAR_YAXIS_LABEL_MAX_WIDTH = HBAR_YAXIS_AREA_PX - 12;
   const HBAR_CATEGORY_LABEL_MAX_LEN = 28;
-  const COLUMN_GRID_PADDING = { left: 10, right: 16, top: 10, bottom: 28 };
 
   function dispose(sel) {
     const c = apexBySelector[sel];
@@ -184,7 +183,7 @@
   function horizontalBarLayout(height) {
     const b = baseOpts();
     const axisColor = chartAxisColor();
-    const gridBlock = { padding: { ...HBAR_GRID_PADDING } };
+    const gridBlock = { padding: { ...DASHBOARD_CHART_GRID_PADDING } };
     return {
       ...b,
       grid: { ...(b.grid || {}), ...gridBlock },
@@ -223,7 +222,7 @@
     const tabletHeight = Math.max(220, Math.round(height * 0.9));
     const phoneHeight = Math.max(238, Math.round(height * 0.88));
     const axisColor = chartAxisColor();
-    const colGrid = { padding: { ...COLUMN_GRID_PADDING } };
+    const colGrid = { padding: { ...DASHBOARD_CHART_GRID_PADDING } };
     return {
       ...b,
       grid: { ...(b.grid || {}), ...colGrid },
@@ -286,7 +285,7 @@
               labels: { formatter: compactAxisNumber, maxWidth: 52, style: { colors: axisColor, fontSize: "10px" } },
             },
           ],
-          grid: { padding: { ...COLUMN_GRID_PADDING, top: 0, bottom: 8 } },
+          grid: { padding: { ...DASHBOARD_CHART_GRID_PADDING } },
         },
       },
       {
@@ -311,7 +310,7 @@
               labels: { formatter: compactAxisNumber, maxWidth: 40, style: { colors: axisColor, fontSize: "10px" } },
             },
           ],
-          grid: { padding: { ...COLUMN_GRID_PADDING, top: 0, bottom: 6 } },
+          grid: { padding: { ...DASHBOARD_CHART_GRID_PADDING } },
           plotOptions: { bar: { horizontal: false, columnWidth: "68%", borderRadius: 4 } },
         },
       },

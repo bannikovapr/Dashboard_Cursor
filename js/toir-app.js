@@ -517,31 +517,43 @@
     if (tbodyCls) {
       tbodyCls.innerHTML = classRows
         .sort((a, b) => b.costs - a.costs)
-        .map(
-          (r) => `<tr>
-          <td>${escapeHtml(r.class)}</td>
+        .map((r) => {
+          const cls = shortenTableLabel(r.class, 18);
+          return `<tr>
+          <td title="${escapeAttr(r.class)}">${escapeHtml(cls)}</td>
           <td>${r.qty}</td>
           <td>${U.formatMoneyMln(r.costs)}</td>
           <td>${U.formatHours(r.downtime)}</td>
           <td>${r.failures}</td>
           <td>${r.ktg != null ? r.ktg.toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : "—"}</td>
-        </tr>`
-        )
+        </tr>`;
+        })
         .join("");
     }
     if (tbodyTop) {
       tbodyTop.innerHTML = topRows
-        .map(
-          (r) => `<tr>
-          <td>${escapeHtml(r.name)}</td>
+        .map((r) => {
+          const name = shortenTableLabel(r.name, 22);
+          return `<tr>
+          <td title="${escapeAttr(r.name)}">${escapeHtml(name)}</td>
           <td>${U.formatMoneyMln(r.cost)}</td>
           <td>${U.formatHours(r.downtime)}</td>
           <td>${r.failures}</td>
           <td>${r.ktg != null ? (r.ktg / 100).toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : "—"}</td>
-        </tr>`
-        )
+        </tr>`;
+        })
         .join("");
     }
+  }
+
+  function isMobileTableLayout() {
+    return window.matchMedia("(max-width: 899px)").matches;
+  }
+
+  function shortenTableLabel(value, maxLen) {
+    const text = String(value ?? "").trim();
+    if (!isMobileTableLayout() || text.length <= maxLen) return text;
+    return `${text.slice(0, Math.max(1, maxLen - 1))}…`;
   }
 
   function escapeHtml(s) {
@@ -1829,6 +1841,20 @@
       drain();
     };
 
+    function refreshTablesForLayout() {
+      const monthSet = monthSetFromPeriod(periodSel?.value || "all", allMonths);
+      const cls = classSel?.value || "__all__";
+      const rows = buildEquipmentRows(liveData, monthSet, cls);
+      renderTables(aggregateClasses(rows), topProblemRows(liveData, monthSet, cls));
+    }
+
+    const onLayoutModeMq = () => refreshTablesForLayout();
+    if (typeof MOBILE_LAYOUT_MQ.addEventListener === "function") {
+      MOBILE_LAYOUT_MQ.addEventListener("change", onLayoutModeMq);
+    } else if (typeof MOBILE_LAYOUT_MQ.addListener === "function") {
+      MOBILE_LAYOUT_MQ.addListener(onLayoutModeMq);
+    }
+
     drain();
     applyTab("summary");
 
@@ -2510,6 +2536,59 @@
   };
 
   let currentAiMode = "agent";
+  let lastAgentArtifacts = null;
+
+  function isMobileAiLayout() {
+    return MOBILE_LAYOUT_MQ.matches;
+  }
+
+  function getLastAgentAnswerBubble() {
+    const log = document.getElementById("aiLog");
+    if (!log) return null;
+    const bubbles = log.querySelectorAll(".bubble.ai");
+    return bubbles.length ? bubbles[bubbles.length - 1] : null;
+  }
+
+  function getMobileArtifactsHost(create) {
+    if (!isMobileAiLayout()) return null;
+    const log = document.getElementById("aiLog");
+    if (!log) return null;
+    let host = log.querySelector(".ai-artifacts--inline-mobile");
+    if (!host && create) {
+      host = document.createElement("div");
+      host.className = "ai-artifacts ai-artifacts--inline-mobile";
+      host.setAttribute("aria-label", "Графики и таблицы агента");
+      log.appendChild(host);
+    }
+    return host;
+  }
+
+  function clearDesktopArtifactsContainer() {
+    const desktopContainer = document.getElementById("aiArtifacts");
+    if (!desktopContainer) return;
+    desktopContainer.hidden = true;
+    desktopContainer.innerHTML = "";
+    desktopContainer._toirArtifacts = null;
+  }
+
+  function ensureMobileAiPanelOpen() {
+    if (!isMobileAiLayout()) return;
+    const panel = document.querySelector(".layout-sidebar.ai-panel");
+    if (!panel) return;
+    document.body.classList.remove("ai-mobile-dock-hidden");
+    panel.classList.remove("ai-panel--user-collapsed");
+    panel.classList.add("ai-panel--expanded");
+  }
+
+  function appendAgentAnswerToWorkspace(card, insertBeforeEl) {
+    const answerEl = getLastAgentAnswerBubble();
+    if (!answerEl) return;
+    const answerWrap = document.createElement("div");
+    answerWrap.className = "agent-workspace-answer bubble ai";
+    answerWrap.innerHTML = answerEl.innerHTML;
+    if (insertBeforeEl) card.insertBefore(answerWrap, insertBeforeEl);
+    else card.appendChild(answerWrap);
+  }
 
   async function askAgent(question, filters) {
     const controller = new AbortController();
@@ -2642,23 +2721,54 @@
     container.appendChild(card);
 
     requestAnimationFrame(() => {
-      Charts.renderAgentChart(artifact, `#${chartId}`, 200);
+      const chartHeight = isMobileAiLayout() ? 180 : 200;
+      Charts.renderAgentChart(artifact, `#${chartId}`, chartHeight);
     });
   }
 
   function renderArtifacts(artifacts, target) {
+    lastAgentArtifacts = artifacts && artifacts.length ? artifacts : null;
+
+    if (isMobileAiLayout()) {
+      clearDesktopArtifactsContainer();
+      const host = getMobileArtifactsHost(true);
+      if (!host) return;
+      host.innerHTML = "";
+      host._toirArtifacts = null;
+      if (!lastAgentArtifacts) {
+        host.hidden = true;
+        syncMobileAiDock();
+        return;
+      }
+      host.hidden = false;
+      host._toirArtifacts = lastAgentArtifacts;
+      const chartCount = lastAgentArtifacts.filter((a) => a && a.type === "chart").length;
+      for (const art of lastAgentArtifacts) {
+        if (art.type === "table") renderArtifactTable(art, host);
+        else if (art.type === "chart") renderArtifactChart(art, host, chartCount);
+      }
+      ensureMobileAiPanelOpen();
+      syncMobileAiDock();
+      return;
+    }
+
     const container = typeof target === "string" ? document.querySelector(target) : target;
     if (!container) return;
+    const inlineHost = document.querySelector(".ai-artifacts--inline-mobile");
+    if (inlineHost) {
+      inlineHost.remove();
+    }
     container.innerHTML = "";
     container._toirArtifacts = null;
-    if (!artifacts || !artifacts.length) {
+    if (!lastAgentArtifacts) {
       container.hidden = true;
+      syncMobileAiDock();
       return;
     }
     container.hidden = false;
-    container._toirArtifacts = artifacts;
-    const chartCount = artifacts.filter((a) => a && a.type === "chart").length;
-    for (const art of artifacts) {
+    container._toirArtifacts = lastAgentArtifacts;
+    const chartCount = lastAgentArtifacts.filter((a) => a && a.type === "chart").length;
+    for (const art of lastAgentArtifacts) {
       if (art.type === "table") renderArtifactTable(art, container);
       else if (art.type === "chart") renderArtifactChart(art, container, chartCount);
     }
@@ -2666,7 +2776,9 @@
   }
 
   function artifactsToExpand(clicked) {
-    const container = document.getElementById("aiArtifacts");
+    const container = isMobileAiLayout()
+      ? document.querySelector(".ai-artifacts--inline-mobile")
+      : document.getElementById("aiArtifacts");
     if (clicked?.type === "chart") {
       const charts = chartArtifactsInBatch(container);
       if (charts.length > 1) return charts;
@@ -2719,7 +2831,8 @@
 
     if (chartBatch.length > 1) {
       ws.appendChild(card);
-      const chartHeight = mobileExpand ? 380 : 320;
+      if (mobileExpand) appendAgentAnswerToWorkspace(card);
+      const chartHeight = mobileExpand ? 220 : 320;
       chartBatch.forEach((art, idx) => {
         const block = document.createElement("div");
         block.className = "agent-workspace-artifact-block";
@@ -2732,7 +2845,7 @@
         chartBox.id = chartId;
         const sel = `#${chartId}`;
         chartSelectors.push(sel);
-        chartBox.style.minHeight = mobileExpand ? "min(42vh, 380px)" : `${chartHeight}px`;
+        chartBox.style.minHeight = mobileExpand ? "min(26vh, 200px)" : `${chartHeight}px`;
         block.appendChild(chartBox);
         card.appendChild(block);
         requestAnimationFrame(() => {
@@ -2747,6 +2860,7 @@
     const single = batch[0] || artifact;
 
     if (single.type === "table") {
+      if (mobileExpand) appendAgentAnswerToWorkspace(card);
       const wrap = document.createElement("div");
       wrap.className = "ai-artifact-table-wrap";
       const table = document.createElement("table");
@@ -2780,17 +2894,18 @@
       card.appendChild(wrap);
       ws.appendChild(card);
     } else if (single.type === "chart") {
+      if (mobileExpand) appendAgentAnswerToWorkspace(card);
       const chartBox = document.createElement("div");
       const chartId = `wsChart_${Date.now()}`;
       chartBox.id = chartId;
       const sel = `#${chartId}`;
       chartSelectors.push(sel);
-      chartBox.style.minHeight = mobileExpand ? "min(55vh, 420px)" : "350px";
+      chartBox.style.minHeight = mobileExpand ? "min(26vh, 200px)" : "350px";
       card.appendChild(chartBox);
       ws.appendChild(card);
       if (mobileExpand) document.body.classList.add("agent-workspace-open");
       requestAnimationFrame(() => {
-        Charts.renderAgentChart(single, sel, mobileExpand ? 420 : 350);
+        Charts.renderAgentChart(single, sel, mobileExpand ? 220 : 350);
       });
       if (!mobileExpand) ws.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
@@ -2841,7 +2956,10 @@
 
     function hasContent() {
       const hasLog = !!(log && log.children.length);
+      const inlineArt = log?.querySelector(".ai-artifacts--inline-mobile");
+      const hasInlineArt = !!(inlineArt && !inlineArt.hidden && inlineArt.children.length);
       const hasArt =
+        hasInlineArt ||
         !!(artifactsContainer && !artifactsContainer.hidden && artifactsContainer.children.length);
       return hasLog || hasArt;
     }
@@ -2884,8 +3002,12 @@
         btnHide.setAttribute("aria-expanded", dockHidden ? "false" : "true");
       }
       if (btnLauncher) {
-        btnLauncher.hidden = !dockable;
+        const showLauncher = dockable && dockHidden;
+        btnLauncher.hidden = !showLauncher;
         btnLauncher.setAttribute("aria-expanded", dockHidden ? "false" : "true");
+      }
+      if (dockBar) {
+        dockBar.hidden = !dockable || dockHidden;
       }
 
       const hc = hasContent();
@@ -2898,8 +3020,11 @@
         btnHistory.textContent = expanded ? "Свернуть" : "История";
       }
 
-      if (mobile && hc && !dockHidden && !panel.classList.contains("ai-panel--user-collapsed")) {
-        panel.classList.add("ai-panel--expanded");
+      if (mobile && hc && !dockHidden) {
+        panel.classList.add("ai-panel--has-content");
+        if (!panel.classList.contains("ai-panel--user-collapsed")) {
+          panel.classList.add("ai-panel--expanded");
+        }
       }
 
       if (!hc) {
@@ -2931,7 +3056,7 @@
 
     if (log) {
       const mo = new MutationObserver(sync);
-      mo.observe(log, { childList: true });
+      mo.observe(log, { childList: true, subtree: true, characterData: true });
     }
     if (artifactsContainer) {
       const moArt = new MutationObserver(sync);
@@ -2945,6 +3070,9 @@
     const onMq = () => {
       panel.classList.remove("ai-panel--user-collapsed");
       document.body.classList.remove("ai-mobile-dock-hidden");
+      if (lastAgentArtifacts?.length && currentAiMode === "agent") {
+        renderArtifacts(lastAgentArtifacts, document.getElementById("aiArtifacts"));
+      }
       sync();
     };
     if (typeof MOBILE_LAYOUT_MQ.addEventListener === "function") {
@@ -2982,9 +3110,17 @@
         currentAiMode = mode;
         modeToggle.querySelectorAll(".ai-mode-btn").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
         if (descEl) descEl.textContent = modeDescriptions[mode] || "";
-        if (artifactsContainer) {
+        if (isMobileAiLayout()) {
+          const inlineHost = document.querySelector(".ai-artifacts--inline-mobile");
+          if (mode === "chat") {
+            if (inlineHost) inlineHost.hidden = true;
+          } else if (lastAgentArtifacts && lastAgentArtifacts.length) {
+            renderArtifacts(lastAgentArtifacts, artifactsContainer);
+          }
+        } else if (artifactsContainer) {
           artifactsContainer.hidden = true;
           artifactsContainer.innerHTML = "";
+          artifactsContainer._toirArtifacts = null;
         }
         syncMobileAiDock();
       });
@@ -2996,6 +3132,7 @@
       div.innerHTML = text;
       log.appendChild(div);
       log.scrollTop = log.scrollHeight;
+      if (ai) ensureMobileAiPanelOpen();
       syncMobileAiDock();
       return div;
     }
@@ -3003,7 +3140,7 @@
     const submitQuestion = async () => {
       const q = (input?.value || "").trim();
       if (!q) return;
-      if (aiPanel) aiPanel.classList.remove("ai-panel--user-collapsed");
+      ensureMobileAiPanelOpen();
       pushBubble(escapeHtml(q), false);
       input.value = "";
 
@@ -3031,6 +3168,7 @@
           if (agentResult.artifacts && agentResult.artifacts.length > 0) {
             renderArtifacts(agentResult.artifacts, artifactsContainer);
           }
+          ensureMobileAiPanelOpen();
         } else {
           const agentErr =
             agentResult && agentResult.ok === false && agentResult.errorMessage
@@ -3068,6 +3206,7 @@
             `<div class="block-title" style="margin-top:8px">Вывод</div>${escapeHtml(conclusion)}` +
             `<div class="block-title" style="margin-top:8px">Действие</div>${escapeHtml(action)}` +
             traceExtra;
+          ensureMobileAiPanelOpen();
         }
       } else {
         const pending = pushBubble('<div class="block-title">Ответ</div>Думаю\u2026', true);
@@ -3076,6 +3215,7 @@
           `<div class="block-title">Факт</div>${escapeHtml(fact)}` +
           `<div class="block-title" style="margin-top:8px">Вывод</div>${escapeHtml(conclusion)}` +
           `<div class="block-title" style="margin-top:8px">Действие</div>${escapeHtml(action)}`;
+        ensureMobileAiPanelOpen();
       }
       log.scrollTop = log.scrollHeight;
       syncMobileAiDock();

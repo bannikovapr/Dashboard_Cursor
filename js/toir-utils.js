@@ -2,7 +2,8 @@
   function formatMoneyMln(rub) {
     if (rub == null || Number.isNaN(rub)) return "—";
     const mln = rub / 1_000_000;
-    return `${mln.toLocaleString("ru-RU", { minimumFractionDigits: 1, maximumFractionDigits: 2 })} млн ₽`;
+    const amount = mln.toLocaleString("ru-RU", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+    return `${amount} млн\u00a0₽`;
   }
 
   function formatMoneyK(rub) {
@@ -13,7 +14,7 @@
 
   function formatHours(h) {
     if (h == null || Number.isNaN(h)) return "—";
-    return `${Math.round(h).toLocaleString("ru-RU")} ч`;
+    return `${Math.round(h).toLocaleString("ru-RU")}\u00a0ч`;
   }
 
   function formatRatioFromPercent(p) {
@@ -75,7 +76,7 @@
       grid: {
         borderColor: grid,
         strokeDashArray: 4,
-        padding: { left: 10, right: 16, top: 10, bottom: 28 },
+        padding: { left: 12, right: 12, top: 10, bottom: 24 },
       },
       dataLabels: { enabled: false },
       legend: { position: "top", horizontalAlign: "right", fontSize: "11px" },
