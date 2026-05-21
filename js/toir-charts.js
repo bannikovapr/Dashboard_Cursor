@@ -26,6 +26,8 @@
   };
 
   const apexBySelector = {};
+  const PHONE_CHART_BREAKPOINT = 576;
+  const MONTH_SHORT_LABELS = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
 
   function dispose(sel) {
     const c = apexBySelector[sel];
@@ -53,10 +55,58 @@
     return U.getBaseChartOptions ? U.getBaseChartOptions() : U.getBaseChartOptionsLight();
   }
 
+  function compactAxisNumber(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return "";
+    const abs = Math.abs(num);
+    if (abs >= 1e9) return `${Number(num / 1e9).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} млрд`;
+    if (abs >= 1e6) return `${Number(num / 1e6).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} млн`;
+    if (abs >= 1e3) return `${Number(num / 1e3).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} тыс`;
+    return num.toLocaleString("ru-RU", { maximumFractionDigits: 1 });
+  }
+
+  function compactMonthLabel(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "";
+    const numberMonth = raw.match(/^(0?[1-9]|1[0-2])$/);
+    const isoMonth = raw.match(/^\d{4}[-/.](0?[1-9]|1[0-2])(?:[-/.]\d{1,2})?$/);
+    const monthIndex = Number((isoMonth || numberMonth || [])[1]);
+    if (monthIndex >= 1 && monthIndex <= 12) return MONTH_SHORT_LABELS[monthIndex - 1];
+    const first = raw.split(/\s+/)[0].replace(/\.$/, "");
+    return first.length > 3 ? first.slice(0, 3) : first;
+  }
+
+  function mobileColumnXAxis(axisColor, rotate = -42, formatter = null, hideOverlappingLabels = false) {
+    const labels = {
+      rotate,
+      rotateAlways: true,
+      hideOverlappingLabels,
+      trim: false,
+      minHeight: 40,
+      maxHeight: 58,
+      style: { colors: axisColor, fontSize: "10px", fontWeight: 600 },
+    };
+    if (typeof formatter === "function") labels.formatter = formatter;
+    return {
+      labels: {
+        ...labels,
+      },
+      tickPlacement: "on",
+    };
+  }
+
+  function withPhoneXAxis(responsive, xaxis) {
+    return (responsive || []).map((entry) =>
+      entry && entry.breakpoint === PHONE_CHART_BREAKPOINT
+        ? { ...entry, options: { ...(entry.options || {}), xaxis } }
+        : entry
+    );
+  }
+
   function chartLayout(height, chartType) {
     const b = baseOpts();
     const tabletHeight = Math.max(220, Math.round(height * 0.9));
-    const phoneHeight = Math.max(200, Math.round(height * 0.8));
+    const phoneHeight = Math.max(238, Math.round(height * 0.88));
     const axisColor = chartAxisColor();
     return {
       ...b,
@@ -88,22 +138,82 @@
           },
         },
         {
-          breakpoint: 576,
+          breakpoint: PHONE_CHART_BREAKPOINT,
           options: {
             chart: { height: phoneHeight },
-            legend: { position: "bottom", fontSize: "9px" },
-            xaxis: { labels: { rotate: 0, hideOverlappingLabels: true, trim: true, maxHeight: 52 } },
+            legend: {
+              position: "top",
+              horizontalAlign: "center",
+              fontSize: "10px",
+              itemMargin: { horizontal: 6, vertical: 2 },
+            },
+            xaxis: mobileColumnXAxis(axisColor, -38, null, true),
             yaxis: {
+              title: { text: "" },
               labels: {
-                maxWidth: 140,
-                style: { fontSize: "11px", colors: axisColor },
+                formatter: compactAxisNumber,
+                maxWidth: 52,
+                style: { fontSize: "10px", colors: axisColor },
               },
             },
-            grid: { padding: { left: 4, right: 0 } },
+            grid: { padding: { left: 0, right: 0, top: 0, bottom: 8 } },
           },
         },
       ],
     };
+  }
+
+  function dualAxisMobileResponsive(height) {
+    const axisColor = chartAxisColor();
+    const phoneHeight = Math.max(286, Math.round(height * 0.96));
+    return [
+      {
+        breakpoint: 992,
+        options: {
+          chart: { height: Math.max(260, Math.round(height * 0.95)) },
+          legend: { position: "top", horizontalAlign: "center", fontSize: "10px" },
+          xaxis: { labels: { rotate: -28, rotateAlways: true, hideOverlappingLabels: false, trim: false } },
+          yaxis: [
+            {
+              title: { text: "" },
+              labels: { formatter: compactAxisNumber, maxWidth: 64, style: { colors: axisColor, fontSize: "10px" } },
+            },
+            {
+              opposite: true,
+              title: { text: "" },
+              labels: { formatter: compactAxisNumber, maxWidth: 52, style: { colors: axisColor, fontSize: "10px" } },
+            },
+          ],
+          grid: { padding: { left: 0, right: 0, top: 0, bottom: 8 } },
+        },
+      },
+      {
+        breakpoint: PHONE_CHART_BREAKPOINT,
+        options: {
+          chart: { height: phoneHeight },
+          legend: {
+            position: "top",
+            horizontalAlign: "center",
+            fontSize: "10px",
+            itemMargin: { horizontal: 5, vertical: 1 },
+          },
+          xaxis: mobileColumnXAxis(axisColor, -44, compactMonthLabel, false),
+          yaxis: [
+            {
+              title: { text: "" },
+              labels: { formatter: compactAxisNumber, maxWidth: 46, style: { colors: axisColor, fontSize: "10px" } },
+            },
+            {
+              opposite: true,
+              title: { text: "" },
+              labels: { formatter: compactAxisNumber, maxWidth: 40, style: { colors: axisColor, fontSize: "10px" } },
+            },
+          ],
+          grid: { padding: { left: -2, right: -2, top: 0, bottom: 6 } },
+          plotOptions: { bar: { horizontal: false, columnWidth: "68%", borderRadius: 4 } },
+        },
+      },
+    ];
   }
 
   function resizeAll() {
@@ -159,16 +269,29 @@
     }
     dispose(targetSel);
     el.innerHTML = "";
+    const axisColor = chartAxisColor();
+    const layout = chartLayout(height, "bar");
     const opts = {
-      ...chartLayout(height, "bar"),
+      ...layout,
       plotOptions: { bar: { columnWidth: "55%", borderRadius: 4 } },
       series: [{ name: "Затраты, млн ₽", data: seriesMln }],
       colors: [chartBarColor()],
-      xaxis: { categories: labels, labels: { rotate: -45 } },
+      xaxis: {
+        categories: labels,
+        labels: {
+          rotate: -42,
+          rotateAlways: true,
+          hideOverlappingLabels: false,
+          trim: false,
+          formatter: compactMonthLabel,
+        },
+      },
       yaxis: {
         title: { text: "Млн ₽" },
         labels: { formatter: (v) => v.toLocaleString("ru-RU", { maximumFractionDigits: 2 }) },
       },
+      grid: { padding: { left: 0, right: 2, top: 0, bottom: 8 } },
+      responsive: withPhoneXAxis(layout.responsive, mobileColumnXAxis(axisColor, -44, compactMonthLabel, false)),
       tooltip: {
         y: {
           formatter: (val) =>
@@ -438,13 +561,24 @@
     }
     dispose(targetSel);
     el.innerHTML = "";
+    const axisColor = chartAxisColor();
+    const layout = chartLayout(height, "line");
     const opts = {
-      ...chartLayout(height, "line"),
+      ...layout,
       stroke: { curve: "smooth", width: 3 },
       markers: { size: 4 },
       series: [{ name: "КТГ", data: values }],
       colors: [chartBarColor()],
-      xaxis: { categories: labels },
+      xaxis: {
+        categories: labels,
+        labels: {
+          rotate: -35,
+          rotateAlways: true,
+          hideOverlappingLabels: false,
+          trim: false,
+          formatter: compactMonthLabel,
+        },
+      },
       yaxis: {
         min: 0,
         max: 1,
@@ -454,6 +588,7 @@
       tooltip: {
         y: { formatter: (v) => Number(v).toLocaleString("ru-RU", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) },
       },
+      responsive: withPhoneXAxis(layout.responsive, mobileColumnXAxis(axisColor, -44, compactMonthLabel, false)),
     };
     apexBySelector[targetSel] = new ApexCharts(el, opts);
     apexBySelector[targetSel].render();
@@ -536,7 +671,16 @@
       ],
       stroke: { width: [0, 0], curve: "straight" },
       colors: [pal[0], chartBarColor()],
-      xaxis: { categories: labels, labels: { rotate: -30 } },
+      xaxis: {
+        categories: labels,
+        labels: {
+          rotate: -35,
+          rotateAlways: true,
+          hideOverlappingLabels: false,
+          trim: false,
+          formatter: compactMonthLabel,
+        },
+      },
       yaxis: [
         {
           seriesName: "Материальные затраты, ₽",
@@ -550,12 +694,15 @@
           labels: { formatter: (v) => `${Math.round(v).toLocaleString("ru-RU")}` },
         },
       ],
-      legend: { position: "top" },
+      legend: {
+        position: "top",
+        horizontalAlign: "center",
+        fontSize: "11px",
+        itemMargin: { horizontal: 8, vertical: 2 },
+      },
       dataLabels: { enabled: false },
-      grid: { padding: { left: 8, right: 8 } },
-      // Для графика с двумя осями отключаем общий responsive из chartLayout:
-      // там yaxis задаётся объектом, что конфликтует с массивом yaxis.
-      responsive: [],
+      grid: { padding: { left: 2, right: 2, top: 0, bottom: 8 } },
+      responsive: dualAxisMobileResponsive(height),
       tooltip: {
         shared: true,
         y: {
