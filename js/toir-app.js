@@ -2568,9 +2568,37 @@
   }
 
   function scrollAiChatToEnd() {
-    const body = document.getElementById("aiScrollBody");
+    const log = document.getElementById("aiLog");
     requestAnimationFrame(() => {
-      if (body) body.scrollTop = body.scrollHeight;
+      if (log) log.scrollTop = log.scrollHeight;
+    });
+  }
+
+  /** На мобилке показываем последний ответ, а не только низ лога (график). */
+  function scrollAiChatToAnswer(answerBubble) {
+    const log = document.getElementById("aiLog");
+    const target = answerBubble || getLastAgentAnswerBubble();
+    requestAnimationFrame(() => {
+      if (!log) return;
+      if (!target || !isMobileAiLayout()) {
+        log.scrollTop = log.scrollHeight;
+        return;
+      }
+      log.scrollTop = Math.max(0, target.offsetTop - 8);
+    });
+  }
+
+  /** Разобрать старые .ai-chat-block — всё снова в #aiLog списком. */
+  function flattenChatBlocks() {
+    const logEl = document.getElementById("aiLog");
+    if (!logEl) return;
+    logEl.querySelectorAll(".ai-chat-block").forEach((block) => {
+      const parent = block.parentNode;
+      while (block.firstChild) parent.insertBefore(block.firstChild, block);
+      block.remove();
+    });
+    logEl.querySelectorAll(".ai-chat-block__question").forEach((el) => {
+      el.classList.remove("ai-chat-block__question");
     });
   }
 
@@ -2626,34 +2654,42 @@
   }
 
   function getAnswerBubbleForArtifactHost(host) {
+    if (host?.classList?.contains("ai-chat-turn")) {
+      let el = host.previousElementSibling;
+      while (el) {
+        if (el.classList?.contains("bubble") && el.classList.contains("ai")) return el;
+        if (el.classList?.contains("ai-chat-turn")) break;
+        el = el.previousElementSibling;
+      }
+    }
     const prev = host?.previousElementSibling;
     if (prev?.classList?.contains("bubble") && prev.classList.contains("ai")) return prev;
     return getLastAgentAnswerBubble();
   }
 
-  /** Сразу после ответа в #aiLog: график(и) — порядок вопрос → ответ → график для каждого хода. */
+  /** В #aiLog: вопрос → ответ → график (соседние блоки, одна тёмная карточка-лог со скроллом). */
   function attachChatTurnAfterBubble(answerBubble, artifacts) {
     const charts = (artifacts || []).filter((a) => a?.type === "chart");
     const tables = (artifacts || []).filter((a) => a?.type === "table");
     if (!answerBubble || (!charts.length && !tables.length)) return null;
 
     const mobile = isMobileAiLayout();
-    const existing = answerBubble.nextElementSibling;
-    if (existing?.classList?.contains("ai-chat-turn")) existing.remove();
+    const existingTurn = answerBubble.nextElementSibling;
+    if (existingTurn?.classList?.contains("ai-chat-turn")) existingTurn.remove();
 
     const turn = document.createElement("div");
     turn.className = "ai-chat-turn";
     turn._toirArtifacts = artifacts;
 
     charts.forEach((art, idx) => {
-      const block = document.createElement("div");
-      block.className = "ai-chat-turn__chart";
+      const chartWrap = document.createElement("div");
+      chartWrap.className = "ai-chat-turn__chart ai-artifact-card--chart";
 
       if (charts.length > 1 || art.title) {
         const title = document.createElement("div");
         title.className = "ai-chat-turn__chart-title";
         title.textContent = art.title || `График ${idx + 1}`;
-        block.appendChild(title);
+        chartWrap.appendChild(title);
       }
 
       const chartH = mobile ? mobilePreviewChartHeight(art) : desktopAgentChartHeight(art);
@@ -2663,8 +2699,16 @@
       chartBox.style.height = `${chartH}px`;
       const chartId = `agentChart_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`;
       chartBox.id = chartId;
-      block.appendChild(chartBox);
-      turn.appendChild(block);
+      chartWrap.appendChild(chartBox);
+
+      const expandBtn = document.createElement("button");
+      expandBtn.type = "button";
+      expandBtn.className = "ai-artifact-expand-btn ai-chat-turn__expand";
+      expandBtn.textContent = charts.length > 1 ? "Развернуть график" : "Развернуть";
+      expandBtn.addEventListener("click", () => expandMobileTurnWorkspace(turn));
+      chartWrap.appendChild(expandBtn);
+
+      turn.appendChild(chartWrap);
 
       requestAnimationFrame(() => {
         Charts.renderAgentChart(
@@ -2676,16 +2720,17 @@
       });
     });
 
-    const expandBtn = document.createElement("button");
-    expandBtn.type = "button";
-    expandBtn.className = "ai-artifact-expand-btn ai-chat-turn__expand";
-    expandBtn.textContent =
-      tables.length && !charts.length ? "Развернуть таблицу" : "Развернуть";
-    expandBtn.addEventListener("click", () => expandMobileTurnWorkspace(turn));
-    turn.appendChild(expandBtn);
+    if (tables.length && !charts.length) {
+      const expandBtn = document.createElement("button");
+      expandBtn.type = "button";
+      expandBtn.className = "ai-artifact-expand-btn ai-chat-turn__expand";
+      expandBtn.textContent = "Развернуть таблицу";
+      expandBtn.addEventListener("click", () => expandMobileTurnWorkspace(turn));
+      turn.appendChild(expandBtn);
+    }
 
     answerBubble.insertAdjacentElement("afterend", turn);
-    scrollAiChatToEnd();
+    scrollAiChatToAnswer(answerBubble);
     return turn;
   }
 
@@ -3165,7 +3210,7 @@
               ? btnLauncher
               : panel;
         const h = measured.getBoundingClientRect().height;
-        document.documentElement.style.setProperty("--ai-mobile-dock-offset", `${Math.ceil(h) + 12}px`);
+        document.documentElement.style.setProperty("--ai-mobile-dock-offset", `${Math.ceil(h) + 4}px`);
       });
     }
 
@@ -3255,6 +3300,7 @@
     const onMq = () => {
       panel.classList.remove("ai-panel--user-collapsed");
       document.body.classList.remove("ai-mobile-dock-hidden");
+      flattenChatBlocks();
       removeLegacyArtifactsHost();
       document.querySelectorAll("#aiArtifacts .ai-artifacts--desktop-turn").forEach((el) => el.remove());
       clearDesktopArtifactsContainer();
@@ -3274,6 +3320,7 @@
     }
 
     window.addEventListener("resize", updateDockOffset);
+    flattenChatBlocks();
     sync();
   }
 
@@ -3315,7 +3362,8 @@
       div.className = `bubble ${ai ? "ai" : ""}`;
       div.innerHTML = text;
       log.appendChild(div);
-      scrollAiChatToEnd();
+      if (ai) scrollAiChatToAnswer(div);
+      else scrollAiChatToEnd();
       if (ai) ensureMobileAiPanelOpen();
       syncMobileAiDock();
       return div;
@@ -3353,7 +3401,7 @@
             renderArtifacts(agentResult.artifacts, pending);
           }
           ensureMobileAiPanelOpen();
-          scrollAiChatToEnd();
+          scrollAiChatToAnswer(pending);
         } else {
           const agentErr =
             agentResult && agentResult.ok === false && agentResult.errorMessage
@@ -3402,7 +3450,7 @@
           `<div class="block-title" style="margin-top:8px">Действие</div>${escapeHtml(action)}`;
         ensureMobileAiPanelOpen();
       }
-      scrollAiChatToEnd();
+      scrollAiChatToAnswer(getLastAgentAnswerBubble());
       syncMobileAiDock();
     };
 
