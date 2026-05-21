@@ -1866,6 +1866,7 @@
         applyDashboardTheme(cur === "dark" ? "light" : "dark");
         drain();
         renderDiagnostics(liveData, periodSel?.value || "all", classSel?.value || "__all__");
+        if (typeof Charts.applyThemeToAllCharts === "function") Charts.applyThemeToAllCharts();
         Charts.resizeAll();
       });
     }
@@ -2549,18 +2550,148 @@
     return bubbles.length ? bubbles[bubbles.length - 1] : null;
   }
 
-  function getMobileArtifactsHost(create) {
-    if (!isMobileAiLayout()) return null;
-    const log = document.getElementById("aiLog");
-    if (!log) return null;
-    let host = log.querySelector(".ai-artifacts--inline-mobile");
-    if (!host && create) {
-      host = document.createElement("div");
-      host.className = "ai-artifacts ai-artifacts--inline-mobile";
-      host.setAttribute("aria-label", "Графики и таблицы агента");
-      log.appendChild(host);
+  function cloneArtifacts(artifacts) {
+    if (!artifacts?.length) return null;
+    try {
+      return JSON.parse(JSON.stringify(artifacts));
+    } catch {
+      return artifacts.map((a) => ({ ...a }));
     }
-    return host;
+  }
+
+  function removeLegacyArtifactsHost() {
+    const log = document.getElementById("aiLog");
+    if (!log) return;
+    log.querySelectorAll(
+      ".ai-artifacts--turn, .ai-artifact-bundle-mobile, .ai-mobile-turn"
+    ).forEach((el) => el.remove());
+  }
+
+  function scrollAiChatToEnd() {
+    const body = document.getElementById("aiScrollBody");
+    requestAnimationFrame(() => {
+      if (body) body.scrollTop = body.scrollHeight;
+    });
+  }
+
+  const MOBILE_ARTIFACT_PREVIEW_TABLE_ROWS = 3;
+
+  function mobilePreviewChartHeight(artifact) {
+    const n = Array.isArray(artifact?.categories) ? artifact.categories.length : 0;
+    const isHBar = (artifact?.chartType || "bar") === "bar" && n >= 4;
+    if (n <= 0) return isHBar ? 188 : 168;
+    if (isHBar) {
+      return Math.min(340, Math.max(200, Math.round(n * 46 + 80)));
+    }
+    if (n < 4) return 172;
+    return Math.min(280, Math.max(188, Math.round(n * 34 + 72)));
+  }
+
+  function mobileWorkspaceChartHeight(artifact) {
+    const n = Array.isArray(artifact?.categories) ? artifact.categories.length : 0;
+    const isHBar = (artifact?.chartType || "bar") === "bar" && n >= 4;
+    if (isHBar) {
+      return Math.min(420, Math.max(240, Math.round(n * 48 + 96)));
+    }
+    return Math.min(320, Math.max(220, mobilePreviewChartHeight(artifact) + 24));
+  }
+
+  /** Десктоп: высота графика агента по числу категорий (как getChartHeight на дашборде). */
+  function desktopAgentChartHeight(artifact) {
+    const n = Array.isArray(artifact?.categories) ? artifact.categories.length : 0;
+    if (n <= 0) return 200;
+    if (n < 4) return 200;
+    return Math.min(380, Math.max(220, Math.round(n * 28 + 72)));
+  }
+
+  function measureDesktopArtifactsPanelMaxHeight(artifacts) {
+    const charts = (artifacts || []).filter((a) => a?.type === "chart");
+    const tables = (artifacts || []).filter((a) => a?.type === "table");
+    let h = 16;
+    for (const c of charts) {
+      h += desktopAgentChartHeight(c) + 52;
+    }
+    for (const t of tables) {
+      const rowCount = Math.min(Array.isArray(t.rows) ? t.rows.length : 0, 14);
+      h += Math.min(240, 44 + rowCount * 24) + 44;
+    }
+    return Math.min(Math.max(h, 180), Math.round(window.innerHeight * 0.48));
+  }
+
+  function syncDesktopArtifactsPanelLayout() {
+    const container = document.getElementById("aiArtifacts");
+    if (!container) return;
+    container.hidden = true;
+    container.style.maxHeight = "";
+  }
+
+  function getAnswerBubbleForArtifactHost(host) {
+    const prev = host?.previousElementSibling;
+    if (prev?.classList?.contains("bubble") && prev.classList.contains("ai")) return prev;
+    return getLastAgentAnswerBubble();
+  }
+
+  /** Сразу после ответа в #aiLog: график(и) — порядок вопрос → ответ → график для каждого хода. */
+  function attachChatTurnAfterBubble(answerBubble, artifacts) {
+    const charts = (artifacts || []).filter((a) => a?.type === "chart");
+    const tables = (artifacts || []).filter((a) => a?.type === "table");
+    if (!answerBubble || (!charts.length && !tables.length)) return null;
+
+    const mobile = isMobileAiLayout();
+    const existing = answerBubble.nextElementSibling;
+    if (existing?.classList?.contains("ai-chat-turn")) existing.remove();
+
+    const turn = document.createElement("div");
+    turn.className = "ai-chat-turn";
+    turn._toirArtifacts = artifacts;
+
+    charts.forEach((art, idx) => {
+      const block = document.createElement("div");
+      block.className = "ai-chat-turn__chart";
+
+      if (charts.length > 1 || art.title) {
+        const title = document.createElement("div");
+        title.className = "ai-chat-turn__chart-title";
+        title.textContent = art.title || `График ${idx + 1}`;
+        block.appendChild(title);
+      }
+
+      const chartH = mobile ? mobilePreviewChartHeight(art) : desktopAgentChartHeight(art);
+      const chartBox = document.createElement("div");
+      chartBox.className = "ai-artifact-chart-box";
+      chartBox.style.minHeight = `${chartH}px`;
+      chartBox.style.height = `${chartH}px`;
+      const chartId = `agentChart_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`;
+      chartBox.id = chartId;
+      block.appendChild(chartBox);
+      turn.appendChild(block);
+
+      requestAnimationFrame(() => {
+        Charts.renderAgentChart(
+          art,
+          `#${chartId}`,
+          chartH,
+          mobile ? { mobileInline: true } : undefined
+        );
+      });
+    });
+
+    const expandBtn = document.createElement("button");
+    expandBtn.type = "button";
+    expandBtn.className = "ai-artifact-expand-btn ai-chat-turn__expand";
+    expandBtn.textContent =
+      tables.length && !charts.length ? "Развернуть таблицу" : "Развернуть";
+    expandBtn.addEventListener("click", () => expandMobileTurnWorkspace(turn));
+    turn.appendChild(expandBtn);
+
+    answerBubble.insertAdjacentElement("afterend", turn);
+    scrollAiChatToEnd();
+    return turn;
+  }
+
+  function attachArtifactsAfterBubble(bubble, artifacts) {
+    if (!bubble || !artifacts?.length) return null;
+    return attachChatTurnAfterBubble(bubble, artifacts);
   }
 
   function clearDesktopArtifactsContainer() {
@@ -2580,14 +2711,148 @@
     panel.classList.add("ai-panel--expanded");
   }
 
-  function appendAgentAnswerToWorkspace(card, insertBeforeEl) {
-    const answerEl = getLastAgentAnswerBubble();
+  function appendAgentAnswerToWorkspace(card, insertBeforeEl, answerBubble) {
+    const answerEl = answerBubble || getLastAgentAnswerBubble();
     if (!answerEl) return;
     const answerWrap = document.createElement("div");
     answerWrap.className = "agent-workspace-answer bubble ai";
     answerWrap.innerHTML = answerEl.innerHTML;
     if (insertBeforeEl) card.insertBefore(answerWrap, insertBeforeEl);
     else card.appendChild(answerWrap);
+  }
+
+  function buildArtifactTableElement(artifact, { maxRows, preview = false, full = false } = {}) {
+    const rows = Array.isArray(artifact?.rows) ? artifact.rows : [];
+    const rowLimit = maxRows != null ? Math.min(rows.length, maxRows) : rows.length;
+    const slice = rows.slice(0, rowLimit);
+
+    const wrap = document.createElement("div");
+    wrap.className = "ai-artifact-table-wrap";
+    if (preview) wrap.classList.add("ai-artifact-table-wrap--preview-mobile");
+
+    const table = document.createElement("table");
+    table.className = preview
+      ? "ai-artifact-table ai-artifact-table--preview-mobile"
+      : full
+        ? "ai-artifact-table ai-artifact-table--full"
+        : "ai-artifact-table";
+
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    for (const col of artifact.columns || []) {
+      const th = document.createElement("th");
+      th.textContent = col.label || col.key;
+      headRow.appendChild(th);
+    }
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    const rowCap = full ? 200 : 100;
+    for (const row of slice.slice(0, rowCap)) {
+      const tr = document.createElement("tr");
+      for (const col of artifact.columns || []) {
+        const td = document.createElement("td");
+        const val = row[col.key];
+        if (typeof val === "number") {
+          td.textContent = val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+        } else {
+          td.textContent = val != null ? String(val) : "—";
+        }
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+
+    if (preview && rows.length > rowLimit) {
+      const more = document.createElement("div");
+      more.className = "ai-artifact-table-more";
+      more.textContent = `Ещё ${rows.length - rowLimit} — «Развернуть»`;
+      wrap.appendChild(more);
+    }
+    return wrap;
+  }
+
+  function expandMobileTurnWorkspace(artifactHost) {
+    const ws = document.getElementById("agentWorkspace");
+    if (!ws || !artifactHost?._toirArtifacts?.length) return;
+
+    const artifacts = artifactHost._toirArtifacts;
+    const answerBubble = getAnswerBubbleForArtifactHost(artifactHost);
+    const charts = artifacts.filter((a) => a?.type === "chart");
+    const tables = artifacts.filter((a) => a?.type === "table");
+    const chartSelectors = [];
+
+    ws.innerHTML = "";
+    ws.hidden = false;
+    ws.classList.add("agent-workspace--fullscreen");
+    document.body.classList.add("agent-workspace-open");
+
+    const card = document.createElement("div");
+    card.className = "card agent-workspace-card";
+
+    const header = document.createElement("div");
+    header.className = "agent-workspace-header";
+    const h3 = document.createElement("h3");
+    if (charts.length && tables.length) {
+      h3.textContent = "Ответ, график и таблица";
+    } else if (charts.length > 1) {
+      h3.textContent = `Ответ и графики (${charts.length})`;
+    } else {
+      h3.textContent = "Ответ агента";
+    }
+    header.appendChild(h3);
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "agent-workspace-close";
+    closeBtn.textContent = "\u00d7";
+    closeBtn.setAttribute("aria-label", "Закрыть");
+    closeBtn.addEventListener("click", () => closeAgentWorkspace(ws, chartSelectors));
+    header.appendChild(closeBtn);
+    card.appendChild(header);
+
+    appendAgentAnswerToWorkspace(card, null, answerBubble);
+
+    charts.forEach((art, idx) => {
+      const chartH = mobileWorkspaceChartHeight(art);
+      const block = document.createElement("div");
+      block.className = "agent-workspace-artifact-block";
+      if (charts.length > 1 || (charts.length && tables.length)) {
+        const sub = document.createElement("h4");
+        sub.className = "agent-workspace-artifact-title";
+        sub.textContent = art.title || `График ${idx + 1}`;
+        block.appendChild(sub);
+      }
+      const chartBox = document.createElement("div");
+      const chartId = `wsChart_${Date.now()}_${idx}`;
+      chartBox.id = chartId;
+      const sel = `#${chartId}`;
+      chartSelectors.push(sel);
+      chartBox.className = "ai-artifact-chart-box";
+      chartBox.style.minHeight = `${chartH}px`;
+      chartBox.style.height = `${chartH}px`;
+      block.appendChild(chartBox);
+      card.appendChild(block);
+      requestAnimationFrame(() => {
+        Charts.renderAgentChart(art, sel, chartH, { mobileInline: true });
+      });
+    });
+
+    tables.forEach((art, idx) => {
+      const block = document.createElement("div");
+      block.className = "agent-workspace-artifact-block";
+      if (tables.length > 1 || (charts.length && tables.length)) {
+        const sub = document.createElement("h4");
+        sub.className = "agent-workspace-artifact-title";
+        sub.textContent = art.title || `Таблица ${idx + 1}`;
+        block.appendChild(sub);
+      }
+      block.appendChild(buildArtifactTableElement(art, { full: true }));
+      card.appendChild(block);
+    });
+
+    ws.appendChild(card);
   }
 
   async function askAgent(question, filters) {
@@ -2642,44 +2907,12 @@
       card.appendChild(badge);
     }
 
-    const wrap = document.createElement("div");
-    wrap.className = "ai-artifact-table-wrap";
-    const table = document.createElement("table");
-    table.className = "ai-artifact-table";
-
-    const thead = document.createElement("thead");
-    const headRow = document.createElement("tr");
-    for (const col of (artifact.columns || [])) {
-      const th = document.createElement("th");
-      th.textContent = col.label || col.key;
-      headRow.appendChild(th);
-    }
-    thead.appendChild(headRow);
-    table.appendChild(thead);
-
-    const tbody = document.createElement("tbody");
-    for (const row of (artifact.rows || []).slice(0, 100)) {
-      const tr = document.createElement("tr");
-      for (const col of (artifact.columns || [])) {
-        const td = document.createElement("td");
-        const val = row[col.key];
-        if (typeof val === "number") {
-          td.textContent = val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
-        } else {
-          td.textContent = val != null ? String(val) : "—";
-        }
-        tr.appendChild(td);
-      }
-      tbody.appendChild(tr);
-    }
-    table.appendChild(tbody);
-    wrap.appendChild(table);
-    card.appendChild(wrap);
+    card.appendChild(buildArtifactTableElement(artifact, { maxRows: 100 }));
 
     const expandBtn = document.createElement("button");
     expandBtn.className = "ai-artifact-expand-btn";
     expandBtn.textContent = "Развернуть";
-    expandBtn.addEventListener("click", () => expandArtifact(artifact));
+    expandBtn.addEventListener("click", () => expandArtifact(artifact, container));
     card.appendChild(expandBtn);
 
     container.appendChild(card);
@@ -2715,70 +2948,46 @@
     expandBtn.className = "ai-artifact-expand-btn";
     expandBtn.textContent =
       chartCountInBatch > 1 ? "Развернуть все" : "Развернуть";
-    expandBtn.addEventListener("click", () => expandArtifact(artifact));
+    expandBtn.addEventListener("click", () => expandArtifact(artifact, container));
     card.appendChild(expandBtn);
 
     container.appendChild(card);
 
     requestAnimationFrame(() => {
-      const chartHeight = isMobileAiLayout() ? 180 : 200;
+      const chartHeight = isMobileAiLayout()
+        ? mobilePreviewChartHeight(artifact)
+        : desktopAgentChartHeight(artifact);
       Charts.renderAgentChart(artifact, `#${chartId}`, chartHeight);
     });
   }
 
-  function renderArtifacts(artifacts, target) {
-    lastAgentArtifacts = artifacts && artifacts.length ? artifacts : null;
+  function renderArtifacts(artifacts, answerBubble) {
+    const cloned = cloneArtifacts(artifacts);
+    lastAgentArtifacts = cloned;
+    clearDesktopArtifactsContainer();
+    syncDesktopArtifactsPanelLayout();
 
-    if (isMobileAiLayout()) {
-      clearDesktopArtifactsContainer();
-      const host = getMobileArtifactsHost(true);
-      if (!host) return;
-      host.innerHTML = "";
-      host._toirArtifacts = null;
-      if (!lastAgentArtifacts) {
-        host.hidden = true;
-        syncMobileAiDock();
-        return;
-      }
-      host.hidden = false;
-      host._toirArtifacts = lastAgentArtifacts;
-      const chartCount = lastAgentArtifacts.filter((a) => a && a.type === "chart").length;
-      for (const art of lastAgentArtifacts) {
-        if (art.type === "table") renderArtifactTable(art, host);
-        else if (art.type === "chart") renderArtifactChart(art, host, chartCount);
-      }
-      ensureMobileAiPanelOpen();
+    if (!cloned?.length) {
       syncMobileAiDock();
       return;
     }
 
-    const container = typeof target === "string" ? document.querySelector(target) : target;
-    if (!container) return;
-    const inlineHost = document.querySelector(".ai-artifacts--inline-mobile");
-    if (inlineHost) {
-      inlineHost.remove();
-    }
-    container.innerHTML = "";
-    container._toirArtifacts = null;
-    if (!lastAgentArtifacts) {
-      container.hidden = true;
+    const bubble = answerBubble || getLastAgentAnswerBubble();
+    if (!bubble) {
       syncMobileAiDock();
       return;
     }
-    container.hidden = false;
-    container._toirArtifacts = lastAgentArtifacts;
-    const chartCount = lastAgentArtifacts.filter((a) => a && a.type === "chart").length;
-    for (const art of lastAgentArtifacts) {
-      if (art.type === "table") renderArtifactTable(art, container);
-      else if (art.type === "chart") renderArtifactChart(art, container, chartCount);
-    }
+
+    attachArtifactsAfterBubble(bubble, cloned);
+    if (isMobileAiLayout()) ensureMobileAiPanelOpen();
     syncMobileAiDock();
   }
 
-  function artifactsToExpand(clicked) {
-    const container = isMobileAiLayout()
-      ? document.querySelector(".ai-artifacts--inline-mobile")
-      : document.getElementById("aiArtifacts");
+  function artifactsToExpand(clicked, artifactHost) {
+    const container =
+      artifactHost ||
+      document.querySelector(".ai-chat-turn:last-of-type") ||
+      document.getElementById("aiArtifacts");
     if (clicked?.type === "chart") {
       const charts = chartArtifactsInBatch(container);
       if (charts.length > 1) return charts;
@@ -2798,10 +3007,14 @@
     document.body.classList.remove("agent-workspace-open");
   }
 
-  function expandArtifact(artifact) {
+  function expandArtifact(artifact, artifactHost) {
+    if (MOBILE_LAYOUT_MQ.matches && artifactHost?._toirArtifacts?.length) {
+      expandMobileTurnWorkspace(artifactHost);
+      return;
+    }
     const ws = document.getElementById("agentWorkspace");
     if (!ws) return;
-    const batch = artifactsToExpand(artifact);
+    const batch = artifactsToExpand(artifact, artifactHost);
     const mobileExpand = MOBILE_LAYOUT_MQ.matches;
     const chartSelectors = [];
     ws.innerHTML = "";
@@ -2832,8 +3045,8 @@
     if (chartBatch.length > 1) {
       ws.appendChild(card);
       if (mobileExpand) appendAgentAnswerToWorkspace(card);
-      const chartHeight = mobileExpand ? 220 : 320;
       chartBatch.forEach((art, idx) => {
+        const chartHeight = mobileExpand ? mobileWorkspaceChartHeight(art) : desktopAgentChartHeight(art);
         const block = document.createElement("div");
         block.className = "agent-workspace-artifact-block";
         const sub = document.createElement("h4");
@@ -2845,11 +3058,13 @@
         chartBox.id = chartId;
         const sel = `#${chartId}`;
         chartSelectors.push(sel);
-        chartBox.style.minHeight = mobileExpand ? "min(26vh, 200px)" : `${chartHeight}px`;
+        chartBox.className = "ai-artifact-chart-box";
+        chartBox.style.minHeight = `${chartHeight}px`;
+        chartBox.style.height = `${chartHeight}px`;
         block.appendChild(chartBox);
         card.appendChild(block);
         requestAnimationFrame(() => {
-          Charts.renderAgentChart(art, sel, chartHeight);
+          Charts.renderAgentChart(art, sel, chartHeight, mobileExpand ? { mobileInline: true } : undefined);
         });
       });
       if (mobileExpand) document.body.classList.add("agent-workspace-open");
@@ -2861,51 +3076,24 @@
 
     if (single.type === "table") {
       if (mobileExpand) appendAgentAnswerToWorkspace(card);
-      const wrap = document.createElement("div");
-      wrap.className = "ai-artifact-table-wrap";
-      const table = document.createElement("table");
-      table.className = "ai-artifact-table ai-artifact-table--full";
-      const thead = document.createElement("thead");
-      const headRow = document.createElement("tr");
-      for (const col of (artifact.columns || [])) {
-        const th = document.createElement("th");
-        th.textContent = col.label || col.key;
-        headRow.appendChild(th);
-      }
-      thead.appendChild(headRow);
-      table.appendChild(thead);
-      const tbody = document.createElement("tbody");
-      for (const row of (artifact.rows || []).slice(0, 200)) {
-        const tr = document.createElement("tr");
-        for (const col of (artifact.columns || [])) {
-          const td = document.createElement("td");
-          const val = row[col.key];
-          if (typeof val === "number") {
-            td.textContent = val.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
-          } else {
-            td.textContent = val != null ? String(val) : "—";
-          }
-          tr.appendChild(td);
-        }
-        tbody.appendChild(tr);
-      }
-      table.appendChild(tbody);
-      wrap.appendChild(table);
-      card.appendChild(wrap);
+      card.appendChild(buildArtifactTableElement(single, { full: true }));
       ws.appendChild(card);
     } else if (single.type === "chart") {
       if (mobileExpand) appendAgentAnswerToWorkspace(card);
+      const chartH = mobileExpand ? mobileWorkspaceChartHeight(single) : desktopAgentChartHeight(single);
       const chartBox = document.createElement("div");
       const chartId = `wsChart_${Date.now()}`;
       chartBox.id = chartId;
       const sel = `#${chartId}`;
       chartSelectors.push(sel);
-      chartBox.style.minHeight = mobileExpand ? "min(26vh, 200px)" : "350px";
+      chartBox.className = "ai-artifact-chart-box";
+      chartBox.style.minHeight = `${chartH}px`;
+      chartBox.style.height = `${chartH}px`;
       card.appendChild(chartBox);
       ws.appendChild(card);
       if (mobileExpand) document.body.classList.add("agent-workspace-open");
       requestAnimationFrame(() => {
-        Charts.renderAgentChart(single, sel, mobileExpand ? 220 : 350);
+        Charts.renderAgentChart(single, sel, chartH, mobileExpand ? { mobileInline: true } : undefined);
       });
       if (!mobileExpand) ws.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
@@ -2956,11 +3144,8 @@
 
     function hasContent() {
       const hasLog = !!(log && log.children.length);
-      const inlineArt = log?.querySelector(".ai-artifacts--inline-mobile");
-      const hasInlineArt = !!(inlineArt && !inlineArt.hidden && inlineArt.children.length);
-      const hasArt =
-        hasInlineArt ||
-        !!(artifactsContainer && !artifactsContainer.hidden && artifactsContainer.children.length);
+      const hasTurnArt = !!log?.querySelector(".ai-chat-turn:not([hidden])");
+      const hasArt = hasTurnArt;
       return hasLog || hasArt;
     }
 
@@ -3070,8 +3255,15 @@
     const onMq = () => {
       panel.classList.remove("ai-panel--user-collapsed");
       document.body.classList.remove("ai-mobile-dock-hidden");
+      removeLegacyArtifactsHost();
+      document.querySelectorAll("#aiArtifacts .ai-artifacts--desktop-turn").forEach((el) => el.remove());
+      clearDesktopArtifactsContainer();
+      syncDesktopArtifactsPanelLayout();
       if (lastAgentArtifacts?.length && currentAiMode === "agent") {
-        renderArtifacts(lastAgentArtifacts, document.getElementById("aiArtifacts"));
+        const bubble = getLastAgentAnswerBubble();
+        if (bubble && !bubble.nextElementSibling?.classList?.contains("ai-chat-turn")) {
+          attachArtifactsAfterBubble(bubble, cloneArtifacts(lastAgentArtifacts));
+        }
       }
       sync();
     };
@@ -3110,18 +3302,10 @@
         currentAiMode = mode;
         modeToggle.querySelectorAll(".ai-mode-btn").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
         if (descEl) descEl.textContent = modeDescriptions[mode] || "";
-        if (isMobileAiLayout()) {
-          const inlineHost = document.querySelector(".ai-artifacts--inline-mobile");
-          if (mode === "chat") {
-            if (inlineHost) inlineHost.hidden = true;
-          } else if (lastAgentArtifacts && lastAgentArtifacts.length) {
-            renderArtifacts(lastAgentArtifacts, artifactsContainer);
-          }
-        } else if (artifactsContainer) {
-          artifactsContainer.hidden = true;
-          artifactsContainer.innerHTML = "";
-          artifactsContainer._toirArtifacts = null;
-        }
+        document.querySelectorAll(".ai-chat-turn").forEach((host) => {
+          host.hidden = mode === "chat";
+        });
+        syncDesktopArtifactsPanelLayout();
         syncMobileAiDock();
       });
     }
@@ -3131,7 +3315,7 @@
       div.className = `bubble ${ai ? "ai" : ""}`;
       div.innerHTML = text;
       log.appendChild(div);
-      log.scrollTop = log.scrollHeight;
+      scrollAiChatToEnd();
       if (ai) ensureMobileAiPanelOpen();
       syncMobileAiDock();
       return div;
@@ -3166,9 +3350,10 @@
             traceHtml;
 
           if (agentResult.artifacts && agentResult.artifacts.length > 0) {
-            renderArtifacts(agentResult.artifacts, artifactsContainer);
+            renderArtifacts(agentResult.artifacts, pending);
           }
           ensureMobileAiPanelOpen();
+          scrollAiChatToEnd();
         } else {
           const agentErr =
             agentResult && agentResult.ok === false && agentResult.errorMessage
@@ -3217,7 +3402,7 @@
           `<div class="block-title" style="margin-top:8px">Действие</div>${escapeHtml(action)}`;
         ensureMobileAiPanelOpen();
       }
-      log.scrollTop = log.scrollHeight;
+      scrollAiChatToEnd();
       syncMobileAiDock();
     };
 

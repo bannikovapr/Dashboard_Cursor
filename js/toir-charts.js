@@ -35,6 +35,8 @@
   const HBAR_YAXIS_AREA_PX = 156;
   const HBAR_YAXIS_LABEL_MAX_WIDTH = HBAR_YAXIS_AREA_PX - 12;
   const HBAR_CATEGORY_LABEL_MAX_LEN = 28;
+  const AGENT_MOBILE_LAYOUT_MQ = "(max-width: 899px)";
+  const AGENT_MOBILE_HBAR_LABEL_MAX_LEN = 24;
 
   function dispose(sel) {
     const c = apexBySelector[sel];
@@ -134,17 +136,26 @@
     return !!(chart && chart.w && chart.w.config && chart.w.config.plotOptions?.bar?.horizontal);
   }
 
-  function lockHorizontalBarYAxisWidth(chart) {
+  function agentMobileYAxisAreaPx(el) {
+    const box =
+      el?.closest?.(".ai-artifact-chart-box") ||
+      el?.parentElement ||
+      el;
+    const w = box?.clientWidth || 320;
+    return Math.min(172, Math.max(108, Math.round(w * 0.4)));
+  }
+
+  function lockHorizontalBarYAxisWidth(chart, areaPx = HBAR_YAXIS_AREA_PX) {
     if (!isHorizontalBarChart(chart) || !chart.w?.globals) return false;
     const prev = chart.w.globals.yAxisScaleWidth;
-    chart.w.globals.yAxisScaleWidth = HBAR_YAXIS_AREA_PX;
-    return prev !== HBAR_YAXIS_AREA_PX;
+    chart.w.globals.yAxisScaleWidth = areaPx;
+    return prev !== areaPx;
   }
 
   /** Один раз после mount: без updated/resized, иначе updateOptions → updated → цикл и лаги. */
-  function stabilizeHorizontalBarChart(chart) {
+  function stabilizeHorizontalBarChart(chart, areaPx = HBAR_YAXIS_AREA_PX) {
     if (!chart || chart._hbarLayoutStable) return;
-    if (!lockHorizontalBarYAxisWidth(chart)) {
+    if (!lockHorizontalBarYAxisWidth(chart, areaPx)) {
       chart._hbarLayoutStable = true;
       return;
     }
@@ -153,7 +164,7 @@
     requestAnimationFrame(() => {
       chart._hbarStabilizing = false;
       if (!isHorizontalBarChart(chart)) return;
-      lockHorizontalBarYAxisWidth(chart);
+      lockHorizontalBarYAxisWidth(chart, areaPx);
       try {
         chart.updateOptions({}, false, false, false);
       } catch (_) {}
@@ -161,22 +172,79 @@
     });
   }
 
-  function horizontalBarChartEvents() {
+  function horizontalBarChartEvents(areaPx = HBAR_YAXIS_AREA_PX, mountEl = null) {
     return {
-      mounted: (ctx) => stabilizeHorizontalBarChart(ctx),
-      resized: (ctx) => lockHorizontalBarYAxisWidth(ctx),
+      mounted: (ctx) => {
+        const px = mountEl ? agentMobileYAxisAreaPx(mountEl) : areaPx;
+        stabilizeHorizontalBarChart(ctx, px);
+      },
+      resized: (ctx) => {
+        const px = mountEl ? agentMobileYAxisAreaPx(mountEl) : areaPx;
+        lockHorizontalBarYAxisWidth(ctx, px);
+      },
     };
   }
 
-  function renderHorizontalBarChart(el, opts, selector) {
+  function renderHorizontalBarChart(el, opts, selector, areaPx = HBAR_YAXIS_AREA_PX) {
     const chart = new ApexCharts(el, opts);
     apexBySelector[selector] = chart;
     const done = chart.render();
     if (done && typeof done.then === "function") {
-      return done.then(() => stabilizeHorizontalBarChart(chart));
+      return done.then(() => stabilizeHorizontalBarChart(chart, areaPx));
     }
-    stabilizeHorizontalBarChart(chart);
+    stabilizeHorizontalBarChart(chart, areaPx);
     return done;
+  }
+
+  function isAgentMobileInlineChart(el) {
+    if (!el || !window.matchMedia(AGENT_MOBILE_LAYOUT_MQ).matches) return false;
+    return !!el.closest(".ai-chat-turn, .ai-mobile-turn, .agent-workspace--fullscreen, .ai-scroll-body");
+  }
+
+  function agentMobileHorizontalBarLayout(height, el) {
+    const b = baseOpts();
+    const axisColor = chartAxisColor();
+    const yPx = agentMobileYAxisAreaPx(el);
+    const gridBlock = { padding: { left: 10, right: 14, top: 12, bottom: 22 } };
+    return {
+      ...b,
+      grid: { ...(b.grid || {}), ...gridBlock },
+      yaxis: {
+        ...hbarCategoryYAxis(axisColor, "11px"),
+        labels: {
+          ...hbarCategoryYAxis(axisColor, "11px").labels,
+          maxWidth: yPx - 14,
+        },
+      },
+      xaxis: { labels: hbarNumericXAxisLabels(axisColor, "10px") },
+      chart: {
+        ...b.chart,
+        type: "bar",
+        height,
+        width: "100%",
+        redrawOnParentResize: true,
+        redrawOnWindowResize: true,
+        animations: {
+          enabled: true,
+          dynamicAnimation: { enabled: false },
+        },
+        events: horizontalBarChartEvents(yPx, el),
+      },
+      plotOptions: {
+        bar: {
+          horizontal: true,
+          barHeight: "62%",
+          borderRadius: 4,
+        },
+      },
+      legend: {
+        ...(b.legend || {}),
+        position: "top",
+        fontSize: "10px",
+        labels: { colors: axisColor },
+      },
+      responsive: [],
+    };
   }
 
   /** Горизонтальные бары: слева категории (yaxis), снизу числа (xaxis). Без responsive — отступы не прыгают при resize/перезагрузке. */
@@ -331,6 +399,45 @@
       });
     };
     requestAnimationFrame(() => requestAnimationFrame(run));
+  }
+
+  function chartSurfaceColor() {
+    return (
+      getComputedStyle(document.documentElement).getPropertyValue("--brand-card").trim() ||
+      "#ffffff"
+    );
+  }
+
+  /** После смены data-theme — фон/оси/tooltip графиков агента и дашборда. */
+  function applyThemeToAllCharts() {
+    const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    const mode = isDark ? "dark" : "light";
+    const axis = chartAxisColor();
+    const grid =
+      getComputedStyle(document.documentElement).getPropertyValue("--chart-grid").trim() ||
+      (isDark ? "#334155" : "#e2e8f0");
+    const bg = chartSurfaceColor();
+    const axisLabels = { style: { colors: axis } };
+    const patch = {
+      chart: { background: bg, foreColor: axis },
+      theme: { mode },
+      grid: { borderColor: grid },
+      tooltip: { theme: mode },
+      legend: { labels: { colors: axis } },
+      xaxis: { labels: axisLabels },
+      yaxis: { labels: axisLabels },
+    };
+
+    Object.values(apexBySelector).forEach((entry) => {
+      const charts = Array.isArray(entry) ? entry : [entry];
+      charts.forEach((chart) => {
+        if (!chart?.updateOptions) return;
+        try {
+          chart.updateOptions(patch, false, false, false);
+          lockHorizontalBarYAxisWidth(chart);
+        } catch (_) {}
+      });
+    });
   }
 
   function renderStructureByClass(categories, values, targetSel = "#chartStructure", height = 300) {
@@ -846,7 +953,7 @@
     return palette.slice(0, n);
   }
 
-  function renderAgentChart(spec, targetSel, height = 260) {
+  function renderAgentChart(spec, targetSel, height = 260, renderOpts = {}) {
     const el = document.querySelector(targetSel);
     if (!el) return;
     dispose(targetSel);
@@ -856,11 +963,21 @@
     const series = spec.series || [];
     const axisTint = chartAxisColor();
     const isHorizontalBar = type === "bar" && (spec.categories || []).length >= 4;
-    const categories = (spec.categories || []).map((c) =>
-      shortenLabel(c, isHorizontalBar ? HBAR_CATEGORY_LABEL_MAX_LEN : 30)
-    );
+    const mobileInline =
+      renderOpts.mobileInline === true || isAgentMobileInlineChart(el);
+    const labelMax = isHorizontalBar
+      ? mobileInline
+        ? AGENT_MOBILE_HBAR_LABEL_MAX_LEN
+        : HBAR_CATEGORY_LABEL_MAX_LEN
+      : 30;
+    const categories = (spec.categories || []).map((c) => shortenLabel(c, labelMax));
     const layoutType = isHorizontalBar ? "bar" : type;
-    const layoutOnce = isHorizontalBar ? horizontalBarLayout(height) : chartLayout(height, layoutType);
+    const layoutOnce = isHorizontalBar
+      ? mobileInline
+        ? agentMobileHorizontalBarLayout(height, el)
+        : horizontalBarLayout(height)
+      : chartLayout(height, layoutType);
+    const hbarAreaPx = mobileInline && isHorizontalBar ? agentMobileYAxisAreaPx(el) : HBAR_YAXIS_AREA_PX;
 
     const isPie = type === "pie" || type === "donut";
 
@@ -938,7 +1055,10 @@
       fill: type === "area" ? { type: "gradient", gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05 } } : {},
     };
 
-    renderHorizontalBarChart(el, opts, targetSel);
+    renderHorizontalBarChart(el, opts, targetSel, hbarAreaPx);
+    if (mobileInline && typeof global.ToirCharts?.resizeAll === "function") {
+      requestAnimationFrame(() => global.ToirCharts.resizeAll());
+    }
   }
 
   global.ToirCharts = {
@@ -958,6 +1078,7 @@
     renderMaterialLaborStacked,
     renderAgentChart,
     resizeAll,
+    applyThemeToAllCharts,
     dispose,
   };
 })(typeof window !== "undefined" ? window : globalThis);

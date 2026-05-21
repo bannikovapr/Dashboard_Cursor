@@ -46,6 +46,15 @@ const RANKING_PRESETS = {
     titleSuffix: "по числу отказов",
     chartType: "bar",
   },
+  personnel: {
+    key: "personnel",
+    dataset: "personnel_utilization",
+    nameField: "employee",
+    valueField: "fact_h",
+    seriesLabel: "Факт, ч",
+    titleSuffix: "по сотрудникам",
+    chartType: "bar",
+  },
 };
 
 function parseRequestedTopRankings(question) {
@@ -58,6 +67,9 @@ function parseRequestedTopRankings(question) {
     (/объект/.test(q) && /проблем|отказ|дефект/.test(q))
   ) {
     keys.push("defects");
+  }
+  if (/сотрудник|персонал|исполнител|загрузк.*перс|трудозатрат.*сотруд|ремонт.*работ.*сотруд/i.test(q)) {
+    keys.push("personnel");
   }
   return [...new Set(keys)].map((k) => RANKING_PRESETS[k]).filter(Boolean);
 }

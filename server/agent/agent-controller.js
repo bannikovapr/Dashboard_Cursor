@@ -378,11 +378,43 @@ function countTopCharts(artifacts) {
   ).length;
 }
 
+function requestedRankingsForQuestion(question) {
+  const rankings = parseRequestedTopRankings(question);
+  return rankings.length ? rankings : [pickTopRanking(question)];
+}
+
+function isTopRankingChart(artifact) {
+  return artifact?.type === "chart" && /топ[-\s]?\d/i.test(String(artifact.title || ""));
+}
+
+function chartMatchesRankings(artifact, rankings) {
+  const key = artifact?.meta?.rankingKey;
+  if (key) return rankings.some((r) => r.key === key);
+  const title = String(artifact.title || "").toLowerCase();
+  for (const r of rankings) {
+    const suffix = String(r.titleSuffix || "")
+      .replace(/^по\s+/i, "")
+      .toLowerCase();
+    if (suffix && title.includes(suffix)) return true;
+    if (r.key === "ktg" && /ктг|готовност/.test(title)) return true;
+    if (r.key === "costs" && /затрат|стоим/.test(title)) return true;
+    if (r.key === "defects" && /отказ|дефект|проблем/.test(title)) return true;
+    if (r.key === "personnel" && /сотрудник|персонал/.test(title)) return true;
+  }
+  return false;
+}
+
+function stripTopChartsForRankings(artifacts, rankings) {
+  return (artifacts || []).filter(
+    (a) => !(isTopRankingChart(a) && chartMatchesRankings(a, rankings))
+  );
+}
+
 function enforceTopNArtifacts(question, artifacts, allToolResults) {
   const topN = parseTopN(question);
   if (!topN) return artifacts;
 
-  const rankings = parseRequestedTopRankings(question);
+  const rankings = requestedRankingsForQuestion(question);
   const multi = wantsMultipleCharts(question) && rankings.length >= 2;
 
   if (multi) {
@@ -390,9 +422,7 @@ function enforceTopNArtifacts(question, artifacts, allToolResults) {
     const builtCharts = (built.artifacts || []).filter((a) => a?.type === "chart");
     if (!builtCharts.length) return artifacts;
 
-    const other = (artifacts || []).filter(
-      (a) => !(a?.type === "chart" && /топ[-\s]?\d/i.test(String(a.title || "")))
-    );
+    const other = stripTopChartsForRankings(artifacts, rankings);
     return [...builtCharts, ...other];
   }
 
@@ -411,13 +441,7 @@ function enforceTopNArtifacts(question, artifacts, allToolResults) {
     ? built.artifacts.find((a) => a.type === "chart") || built.artifacts[0]
     : built.artifacts.find((a) => a.type === "table") || built.artifacts[0];
 
-  const withoutConflictingCharts = (artifacts || []).filter(
-    (a) =>
-      !(
-        a?.type === "chart" &&
-        /топ[-\s]?\d/i.test(String(a.title || ""))
-      )
-  );
+  const withoutConflictingCharts = stripTopChartsForRankings(artifacts, rankings);
 
   return [replacement, ...withoutConflictingCharts.filter((a) => a !== replacement)];
 }
