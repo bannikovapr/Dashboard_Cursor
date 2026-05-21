@@ -2653,15 +2653,14 @@
     }
 
     function setDockHidden(hidden) {
-      const dockable = MOBILE_LAYOUT_MQ.matches && layout?.dataset.activeTab !== "reports";
+      const dockable = MOBILE_LAYOUT_MQ.matches;
       document.body.classList.toggle("ai-mobile-dock-hidden", !!hidden && dockable);
       sync();
     }
 
     function sync() {
       const mobile = MOBILE_LAYOUT_MQ.matches;
-      const reports = layout?.dataset.activeTab === "reports";
-      const dockable = mobile && !reports;
+      const dockable = mobile;
       document.body.classList.toggle("ai-mobile-dock-active", dockable);
       if (!dockable) document.body.classList.remove("ai-mobile-dock-hidden");
       const dockHidden = dockable && document.body.classList.contains("ai-mobile-dock-hidden");
